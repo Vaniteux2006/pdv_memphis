@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Memphis PDV — Pesquisa de Ponto de Venda</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&family=Sacramento&display=swap" media="print" onload="this.media='all'" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="/"><img src="/logo-memphis.webp" alt="Memphis" class="brand-logo" /></a>
+    <a class="btn-cta" href="/login.html" style="padding:10px 28px;font-size:13px;">Entrar</a>
+  </header>
+
+  <section class="lp-hero">
+    <div class="lp-kicker">a essência do ponto de venda</div>
+    <h1>Pesquisa de Ponto de Venda</h1>
+    <p>Plataforma da Memphis para coleta e avaliação de fotos no PDV. Promotores enviam o
+       registro direto pelo celular; nossa equipe revisa, valida e organiza tudo num só lugar.</p>
+    <a class="btn-cta" href="/login.html">Entrar</a>
+    <a class="btn-cta outline" href="#como">Como funciona</a>
+  </section>
+
+  <section class="lp-section">
+    <h2>O que a plataforma faz</h2>
+    <p class="sub">Adeus mar de mensagens e fotos perdidas no WhatsApp.</p>
+    <div class="features">
+      <div class="feature">
+        <div class="ic">📷</div>
+        <h3>Envio simples no celular</h3>
+        <p>O promotor seleciona cliente, cidade e região, confere a senha da semana e envia até 2 fotos. Rápido, mesmo pra quem não tem intimidade com tecnologia.</p>
+      </div>
+      <div class="feature">
+        <div class="ic">✅</div>
+        <h3>Avaliação e validação</h3>
+        <p>A equipe marca ponto extra (Ilha, Display, Gôndola, Cross, Antes e depois), valida ou recusa e registra observações — tudo vinculado à foto.</p>
+      </div>
+      <div class="feature">
+        <div class="ic">🗂️</div>
+        <h3>Organizado por região</h3>
+        <p>Download em ZIP já separado nas pastas do servidor interno (NE, CN, SP, SE, SUL) e exportação para Excel no modelo das planilhas.</p>
+      </div>
+      <div class="feature">
+        <div class="ic">🔒</div>
+        <h3>Promotor verificado</h3>
+        <p>O nome é conferido contra o banco de promotores da empresa, evitando envios fora do cadastro.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="steps" id="como">
+    <div class="lp-section">
+      <h2>Como funciona</h2>
+      <p class="sub">Do campo ao relatório em quatro passos.</p>
+      <div class="steps-grid">
+        <div class="step"><div class="num">1</div><h4>Promotor envia</h4><p>Fotos do PDV com os dados do registro, direto pelo celular.</p></div>
+        <div class="step"><div class="num">2</div><h4>Equipe avalia</h4><p>Valida, marca ponto extra e anota observações.</p></div>
+        <div class="step"><div class="num">3</div><h4>Baixa organizado</h4><p>ZIP por região e Excel no modelo de vocês.</p></div>
+        <div class="step"><div class="num">4</div><h4>Limpa o lote</h4><p>Arquiva o que já foi baixado e parte pra próxima leva.</p></div>
+      </div>
+      <div style="text-align:center;margin-top:40px;">
+        <a class="btn-cta" href="/login.html">Acessar a plataforma</a>
+      </div>
+    </div>
+  </section>
+
+  <footer class="lp-footer">
+    <div class="fbrand">memphis</div>
+    <div>Pesquisa de Ponto de Venda &middot; uso interno</div>
+    <div style="margin-top:8px;opacity:.8;">© <span id="ano"></span> Memphis &middot; Todos os direitos reservados</div>
+  </footer>
+
+  <script>document.getElementById('ano').textContent = new Date().getFullYear();</script>
+</body>
+</html>

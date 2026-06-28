@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Memphis PDV — Enviar fotos</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&family=Sacramento&display=swap" media="print" onload="this.media='all'" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="topbar">
+    <a class="brand" href="/"><img src="/logo-memphis.webp" alt="Memphis" class="brand-logo" /><span class="pdv-badge">PDV</span></a>
+    <div class="topbar-right"><span class="who" id="who"></span> <button class="ghost" onclick="logout()">Sair</button></div>
+  </div>
+
+  <div class="wrap">
+    <div class="card">
+      <h2>Enviar fotos</h2>
+      <div id="senha-box" style="background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:12px;margin-bottom:14px;font-size:14px;">
+        <div class="muted" id="hoje"></div>
+        <div style="margin-top:6px;">🔑 Senha Mensal: <b id="sm-now">—</b> &nbsp;·&nbsp; Senha Semanal: <b id="ss-now">—</b></div>
+      </div>
+      <form id="form">
+        <label>Nome Completo do Promotor</label>
+        <input id="promotor" list="promotores-dl" autocomplete="off" required placeholder="digite seu nome completo" />
+        <datalist id="promotores-dl"></datalist>
+        <div id="prom-status" class="muted" style="min-height:18px;margin-top:4px;"></div>
+
+        <label>Loja: Nome do Cliente</label>
+        <input id="cliente" list="clientes-dl" autocomplete="off" required placeholder="ex: NOVO SURUBIM" />
+        <datalist id="clientes-dl"></datalist>
+
+        <label>Localização da Loja (endereço)</label>
+        <input id="endereco" autocomplete="off" required placeholder="rua, número, bairro, cidade" />
+
+        <div class="row">
+          <div><label>Data da exposição</label><input id="dataExposicao" type="date" required /></div>
+          <div><label>Região</label><select id="regiao" required></select></div>
+        </div>
+
+        <label>Grupo</label>
+        <input id="grupo" list="grupos-dl" autocomplete="off" placeholder="grupo do promotor (ex: PDV NE)" />
+        <datalist id="grupos-dl"></datalist>
+
+        <label>Fotos (máximo 2 por cliente)</label>
+        <input id="fotos" type="file" accept="image/*" capture="environment" multiple required />
+        <div class="muted" id="fileinfo" style="margin-top:6px;"></div>
+
+        <button type="submit" id="send" style="margin-top:14px;">Enviar</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>Minhas fotos enviadas</h2>
+      <div class="muted" id="myempty">Nada enviado ainda.</div>
+      <div class="grid" id="mygrid"></div>
+    </div>
+
+    <div class="card" style="border-left:3px solid var(--teal);background:var(--teal-soft);">
+      <div style="font-size:14px;">⚠️ Achou que houve algum engano ou equívoco na avaliação?
+        Mande mensagem para <b>(51) 00 00000 0000</b>.</div>
+    </div>
+  </div>
+
+  <div class="modal" id="modal" onclick="this.classList.remove('show')"><img id="modalimg" /></div>
+
+  <script src="/common.js"></script>
+  <script>
+    let me, ref, limite = 2;
+    async function init() {
+      me = await api('/api/me');
+      document.getElementById('who').textContent = me.name;
+      ref = await api('/api/reference');
+      limite = ref.limiteFotos;
+      fillDL('clientes-dl', ref.clientes);
+      fillDL('grupos-dl', ref.grupos);
+      document.getElementById('regiao').innerHTML =
+        '<option value="">— região —</option>' +
+        ref.regioes.map((r) => `<option value="${r.sigla}">${esc(r.nome)} (${r.sigla})</option>`).join('');
+      document.getElementById('dataExposicao').value = new Date().toISOString().slice(0, 10); // hoje por padrão
+      document.getElementById('hoje').textContent =
+        'Hoje: ' + new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+      document.getElementById('sm-now').textContent = ref.senhas.senhaMensal || '—';
+      document.getElementById('ss-now').textContent = ref.senhas.senhaSemanal || '—';
+      loadMine();
+      setInterval(loadMine, 20000); // atualiza status/pré-avaliação a cada 20s
+    }
+    const fillDL = (id, arr) =>
+      (document.getElementById(id).innerHTML = arr.map((v) => `<option value="${esc(v)}">`).join(''));
+
+    // ---- checagem do promotor contra o banco da empresa (com debounce) ----
+    const promInput = document.getElementById('promotor');
+    const promStatus = document.getElementById('prom-status');
+    let promTimer, promOk = false, promCadastrado = false;
+    promInput.addEventListener('input', () => {
+      clearTimeout(promTimer);
+      promStatus.textContent = '';
+      promOk = false; promCadastrado = false;
+      const nome = promInput.value.trim();
+      if (nome.length < 3) return;
+      promTimer = setTimeout(async () => {
+        const r = await api('/api/check-promotor?nome=' + encodeURIComponent(nome));
+        document.getElementById('promotores-dl').innerHTML = (r.sugestoes || []).map((s) => `<option value="${esc(s)}">`).join('');
+        if (r.existe) {
+          promOk = true;
+          promStatus.innerHTML = '<span style="color:var(--green)">✓ Promotor encontrado no banco</span>';
+        } else {
+          const sug = (r.sugestoes && r.sugestoes.length) ? ' Parecidos: ' +
+            r.sugestoes.slice(0, 3).map((s) => `<a href="#" onclick="pickProm('${esc(s).replace(/'/g, "\\'")}');return false">${esc(s)}</a>`).join(', ') : '';
+          promStatus.innerHTML = `<span style="color:var(--amber)">⚠ Nome não está no banco.${sug}</span> ` +
+            `<a href="#" style="font-weight:600" onclick="addNovo();return false">➕ Cadastrar "${esc(nome)}" como novo</a>`;
+        }
+      }, 350);
+    });
+    window.pickProm = (s) => { promInput.value = s; promInput.dispatchEvent(new Event('input')); };
+    window.addNovo = async () => {
+      const nome = promInput.value.trim();
+      if (nome.length < 3) return;
+      try {
+        const r = await api('/api/promotor-pendente', { method: 'POST', body: JSON.stringify({ nome }) });
+        if (r.jaExiste) { promOk = true; promStatus.innerHTML = '<span style="color:var(--green)">✓ Já está no banco</span>'; return; }
+        promCadastrado = true; // libera o envio sem o aviso
+        promStatus.innerHTML = '<span style="color:var(--teal)">✓ Enviado para aprovação da equipe. Pode mandar as fotos.</span>';
+      } catch (e) { toast(e.message, 'bad'); }
+    };
+
+    const fotos = document.getElementById('fotos');
+    fotos.addEventListener('change', () => {
+      if (fotos.files.length > limite) {
+        toast(`Máximo ${limite} fotos por cliente`, 'bad');
+        fotos.value = '';
+        document.getElementById('fileinfo').textContent = '';
+        return;
+      }
+      document.getElementById('fileinfo').textContent = fotos.files.length ? `${fotos.files.length} foto(s)` : '';
+    });
+
+    async function compress(file) {
+      if (!file.type.startsWith('image/')) return file;
+      try {
+        const bmp = await createImageBitmap(file);
+        const scale = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+        const w = Math.round(bmp.width * scale), h = Math.round(bmp.height * scale);
+        const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+        cv.getContext('2d').drawImage(bmp, 0, 0, w, h);
+        const blob = await new Promise((r) => cv.toBlob(r, 'image/jpeg', 0.8));
+        if (blob && blob.size < file.size) return new File([blob], file.name.replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' });
+      } catch {}
+      return file;
+    }
+
+    document.getElementById('form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!promOk && !promCadastrado && !confirm('O nome do promotor não foi confirmado no banco. Enviar mesmo assim?')) return;
+      const btn = document.getElementById('send');
+      btn.disabled = true;
+      try {
+        // 1) sobe cada foto DIRETO no Cloudinary (comprimindo antes)
+        const fotosIds = [];
+        let i = 0;
+        for (const file of fotos.files) {
+          btn.textContent = `Enviando foto ${++i}/${fotos.files.length}...`;
+          fotosIds.push(await cloudinaryUpload(await compress(file), 'fotos'));
+        }
+        // 2) registra os metadados no nosso servidor
+        btn.textContent = 'Finalizando...';
+        const data = await api('/api/submissions', {
+          method: 'POST',
+          body: JSON.stringify({
+            cliente: val('cliente'), endereco: val('endereco'), dataExposicao: val('dataExposicao'),
+            regiao: val('regiao'), grupo: val('grupo'), promotor: val('promotor'), fotos: fotosIds,
+          }),
+        });
+        toast(`${data.count} foto(s) enviada(s)!`, 'ok');
+        e.target.reset(); promStatus.textContent = ''; promOk = false; promCadastrado = false;
+        document.getElementById('dataExposicao').value = new Date().toISOString().slice(0, 10);
+        document.getElementById('fileinfo').textContent = '';
+        loadMine();
+      } catch (ex) { toast(ex.message, 'bad'); }
+      finally { btn.disabled = false; btn.textContent = 'Enviar'; }
+    });
+    const val = (id) => document.getElementById(id).value;
+
+    async function loadMine() {
+      const rows = await api('/api/my/submissions');
+      document.getElementById('myempty').classList.toggle('hidden', rows.length > 0);
+      document.getElementById('mygrid').innerHTML = rows.map(card).join('');
+    }
+    const PREAV_COR = { REGULAR: 'var(--yellow)', BOM: 'var(--green)', EXCELENTE: 'var(--purple)' };
+    function preavPill(v) {
+      if (!v) return '';
+      const cor = PREAV_COR[v] || 'var(--muted)';
+      return `<span class="pill" style="background:${cor};color:#fff;border-color:transparent">${esc(v)}</span>`;
+    }
+    function card(s) {
+      const val = s.validado === true ? '<span class="pill on">Validada</span>'
+        : s.validado === false ? '<span class="pill" style="color:var(--red)">Recusada</span>'
+        : '<span class="pill off">Em análise</span>';
+      const pago = s.pago ? ' <span class="pill on">💰 Pago</span>' : '';
+      return `<div class="photo">
+        <img src="/api/file/${s.id}" loading="lazy" onclick="zoom('${s.id}')" />
+        <div class="meta">
+          <div class="tags"><b>${esc(s.cliente)}</b> · ${esc(s.regiao)}${s.grupo ? ' · ' + esc(s.grupo) : ''}<br>
+            ${esc(s.endereco || '')}<br>
+            <span class="muted">Exposição: ${s.dataExposicao ? new Date(s.dataExposicao + 'T00:00').toLocaleDateString('pt-BR') : '—'}</span></div>
+          ${val} ${preavPill(s.preAvaliacao)}${pago}
+          ${(s.pontosExtra || []).length ? `<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;">${s.pontosExtra.map((p) => `<span class="pill" style="background:${corPonto(p)};color:#fff;border-color:transparent">${esc(p)}</span>`).join('')}</div>` : ''}
+          ${s.observacao ? `<div class="tags" style="margin-top:6px;"><b>Obs:</b> ${esc(s.observacao)}</div>` : ''}
+        </div>
+      </div>`;
+    }
+    function zoom(id) { document.getElementById('modalimg').src = '/api/file/' + id; document.getElementById('modal').classList.add('show'); }
+
+    init().catch((e) => toast(e.message, 'bad'));
+  </script>
+</body>
+</html>

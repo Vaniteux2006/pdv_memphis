@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Memphis PDV — Entrar</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&family=Sacramento&display=swap" media="print" onload="this.media='all'" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="/"><img src="/logo-memphis.webp" alt="Memphis" class="brand-logo" /></a>
+    <a class="ghost" href="/" style="padding:8px 16px;border:1px solid var(--line);border-radius:7px;color:var(--muted);font-size:13px;">← Início</a>
+  </header>
+
+  <div class="login-wrap">
+    <div class="card login-card">
+      <h1>Identificação</h1>
+      <p class="muted">Entre com o e-mail e senha que você recebeu.</p>
+      <form id="form">
+        <label>E-mail</label>
+        <input id="email" type="email" autocomplete="username" required />
+        <label>Senha</label>
+        <input id="password" type="password" autocomplete="current-password" required />
+        <div class="err" id="err"></div>
+        <button type="submit" style="width:100%; margin-top:8px;">Prosseguir</button>
+      </form>
+
+      <div style="text-align:center;margin-top:14px;">
+        <a href="#" id="forgot-link" style="font-size:13px;">Esqueci minha senha</a>
+      </div>
+      <form id="forgot-form" class="hidden" style="margin-top:12px;border-top:1px solid var(--line);padding-top:14px;">
+        <label>Seu e-mail</label>
+        <input id="forgot-email" type="email" required />
+        <button type="submit" class="secondary" style="width:100%;margin-top:8px;">Enviar link de redefinição</button>
+        <div class="muted" id="forgot-msg" style="margin-top:10px;"></div>
+      </form>
+    </div>
+  </div>
+
+  <script src="/common.js"></script>
+  <script>
+    (async () => {
+      try {
+        const me = await fetch('/api/me');
+        if (me.ok) {
+          const u = await me.json();
+          location.href = u.role === 'admin' ? '/admin.html' : '/promotor.html';
+        }
+      } catch {}
+    })();
+
+    document.getElementById('form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const err = document.getElementById('err');
+      err.textContent = '';
+      const pwInput = document.getElementById('password');
+      // fetch direto (NÃO usa api(), que redireciona em 401 — aqui 401 = senha errada)
+      try {
+        const res = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: document.getElementById('email').value,
+            password: pwInput.value,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const msg = data.error || 'E-mail ou senha incorretos';
+          err.textContent = msg;
+          toast(msg, 'bad');        // pop-up
+          pwInput.value = '';        // mantém o e-mail, limpa só a senha
+          pwInput.focus();
+          return;
+        }
+        location.href = data.role === 'admin' ? '/admin.html' : '/promotor.html';
+      } catch (ex) {
+        err.textContent = 'Erro de conexão. Tente de novo.';
+        toast('Erro de conexão', 'bad');
+      }
+    });
+
+    // ---- esqueci minha senha ----
+    document.getElementById('forgot-link').addEventListener('click', (e) => {
+      e.preventDefault();
+      document.getElementById('forgot-form').classList.toggle('hidden');
+      document.getElementById('forgot-email').focus();
+    });
+    document.getElementById('forgot-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const msg = document.getElementById('forgot-msg');
+      try {
+        const res = await fetch('/api/forgot-password', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: document.getElementById('forgot-email').value }),
+        });
+        const data = await res.json().catch(() => ({}));
+        msg.innerHTML = 'Se o e-mail existir, enviamos um link de redefinição. Confira sua caixa de entrada.';
+        // modo dev (sem SMTP): mostra o link direto pra testar
+        if (data.devLink) msg.innerHTML += `<br><a href="${data.devLink}">Abrir link (modo teste)</a>`;
+      } catch {
+        msg.textContent = 'Erro de conexão. Tente de novo.';
+      }
+    });
+  </script>
+</body>
+</html>

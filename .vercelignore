@@ -1,0 +1,7 @@
+# não precisa ir pro deploy
+test/
+docs/
+tools/
+.claude/
+uploads/
+*.md

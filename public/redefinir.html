@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Memphis PDV — Redefinir senha</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&family=Sacramento&display=swap" media="print" onload="this.media='all'" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="/"><img src="/logo-memphis.webp" alt="Memphis" class="brand-logo" /></a>
+  </header>
+
+  <div class="login-wrap">
+    <div class="card login-card">
+      <h1>Nova senha</h1>
+      <p class="muted">Escolha uma nova senha para sua conta.</p>
+      <form id="form">
+        <label>Nova senha (mín. 6 caracteres)</label>
+        <input id="senha" type="password" autocomplete="new-password" minlength="6" required />
+        <label>Confirmar nova senha</label>
+        <input id="senha2" type="password" autocomplete="new-password" minlength="6" required />
+        <div class="err" id="err"></div>
+        <button type="submit" style="width:100%;margin-top:8px;">Redefinir senha</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="/common.js"></script>
+  <script>
+    const token = new URLSearchParams(location.search).get('token');
+    if (!token) {
+      document.getElementById('err').textContent = 'Link inválido. Peça um novo na tela de login.';
+      document.getElementById('form').classList.add('hidden');
+    }
+    document.getElementById('form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const err = document.getElementById('err');
+      err.textContent = '';
+      const s1 = document.getElementById('senha').value, s2 = document.getElementById('senha2').value;
+      if (s1 !== s2) { err.textContent = 'As senhas não conferem.'; return; }
+      try {
+        const res = await fetch('/api/reset-password', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token, password: s1 }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { err.textContent = data.error || 'Não foi possível redefinir.'; return; }
+        toast('Senha redefinida! Entrando...', 'ok');
+        setTimeout(() => (location.href = '/login.html'), 1500);
+      } catch {
+        err.textContent = 'Erro de conexão. Tente de novo.';
+      }
+    });
+  </script>
+</body>
+</html>

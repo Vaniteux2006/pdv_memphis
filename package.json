@@ -1,0 +1,23 @@
+{
+  "name": "memphis-pdv",
+  "version": "1.0.0",
+  "description": "Memphis PDV - coleta e avaliação de fotos de ponto de venda",
+  "type": "commonjs",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cloudinary": "^2.10.0",
+    "cookie-parser": "^1.4.7",
+    "dotenv": "^17.4.2",
+    "exceljs": "^4.4.0",
+    "express": "^4.19.2",
+    "express-rate-limit": "^8.5.2",
+    "helmet": "^8.2.0",
+    "jsonwebtoken": "^9.0.3",
+    "mongodb": "^7.3.0",
+    "nodemailer": "^9.0.1"
+  }
+}

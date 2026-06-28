@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Memphis PDV — Painel</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&family=Sacramento&display=swap" media="print" onload="this.media='all'" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="topbar">
+    <a class="brand" href="/"><img src="/logo-memphis.webp" alt="Memphis" class="brand-logo" /><span class="pdv-badge">PAINEL</span></a>
+    <div class="topbar-right"><span class="who" id="who"></span> <button class="ghost" onclick="logout()">Sair</button></div>
+  </div>
+
+  <div class="wrap">
+    <div class="tabs">
+      <button data-tab="fotos" class="active">Fotos</button>
+      <button data-tab="aprovar">Aprovar promotor <span id="pend-badge" class="pill warn hidden" style="margin-left:4px;">0</span></button>
+      <button data-tab="promotores">Contas de promotor</button>
+      <button data-tab="listas">Listas</button>
+    </div>
+
+    <!-- FOTOS -->
+    <section id="tab-fotos">
+      <div class="card">
+        <div class="toolbar">
+          <input id="f-q" placeholder="🔎 buscar nome, cliente, endereço, grupo..." style="flex:1;min-width:200px;" />
+          <select id="f-regiao"><option value="">Todas regiões</option></select>
+          <select id="f-grupo"><option value="">Todos grupos</option></select>
+          <select id="f-status">
+            <option value="">Todos status</option>
+            <option value="novos">Não baixados</option>
+            <option value="baixados">Já baixados</option>
+            <option value="validados">Validados</option>
+            <option value="recusados">Recusados</option>
+          </select>
+          <span class="count" id="count"></span>
+        </div>
+        <div class="toolbar">
+          <button id="btn-download">⬇ Baixar ZIP (não baixados)</button>
+          <button class="secondary" id="btn-download-all">ZIP de tudo</button>
+          <button class="secondary" id="btn-excel">📊 Exportar Excel</button>
+          <button class="danger" id="btn-purge">🗑 Limpar baixados</button>
+        </div>
+        <div class="muted" id="empty">Nenhuma foto.</div>
+        <div class="grid" id="grid"></div>
+      </div>
+    </section>
+
+    <!-- APROVAR PROMOTOR -->
+    <section id="tab-aprovar" class="hidden">
+      <div class="card">
+        <h2>Promotores aguardando aprovação</h2>
+        <p class="muted">Nomes que promotores cadastraram por não estarem no banco. Aprovar adiciona ao banco oficial.</p>
+        <div id="pend-list"></div>
+      </div>
+    </section>
+
+    <!-- CONTAS -->
+    <section id="tab-promotores" class="hidden">
+      <div class="card">
+        <h2>Criar conta de acesso</h2>
+        <div class="row">
+          <div><label>Nome</label><input id="u-name" /></div>
+          <div><label>E-mail</label><input id="u-email" type="email" /></div>
+          <div><label>Senha</label><input id="u-pass" /></div>
+          <div><label>Tipo</label>
+            <select id="u-role"><option value="promotor">Promotor</option><option value="admin">Admin (acesso ao painel)</option></select>
+          </div>
+        </div>
+        <button id="u-create" style="margin-top:12px;">Criar conta</button>
+        <button class="secondary" id="u-genpass" style="margin-top:12px;">Gerar senha</button>
+      </div>
+      <div class="card"><h2>Contas (<span id="u-count">0</span>)</h2><div id="u-list"></div></div>
+    </section>
+
+    <!-- LISTAS -->
+    <section id="tab-listas" class="hidden">
+      <div class="card">
+        <h2>🔑 Senhas atuais (o que o promotor vê na hora de enviar)</h2>
+        <div class="row">
+          <div><label>Senha Mensal</label><input id="cfg-sm" placeholder="ex: FEIJÃO" /></div>
+          <div><label>Senha Semanal</label><input id="cfg-ss" placeholder="ex: PIPOCA" /></div>
+        </div>
+        <button id="cfg-save" style="margin-top:12px;">Salvar senhas</button>
+      </div>
+      <p class="muted">Banco de promotores da empresa: <b id="prom-total">0</b> nomes (usado pra checar quem envia).</p>
+      <div class="row">
+        <div class="card"><h2>Grupos</h2><div id="list-grupos"></div>
+          <div class="row" style="margin-top:10px;"><input id="add-grupos" placeholder="novo grupo" /><button data-add="grupos" style="flex:0;">+</button></div>
+        </div>
+        <div class="card"><h2>Promotores (banco)</h2>
+          <input id="prom-search" placeholder="filtrar nome..." style="margin-bottom:8px;" />
+          <div id="list-promotores" style="max-height:300px;overflow:auto;"></div>
+          <div class="row" style="margin-top:10px;"><input id="add-promotores" placeholder="novo promotor" /><button data-add="promotores" style="flex:0;">+</button></div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="modal" id="modal" onclick="this.classList.remove('show')"><img id="modalimg" /></div>
+
+  <script src="/vendor/jszip.min.js"></script>
+  <script src="/common.js"></script>
+  <script>
+    let ref = {};
+
+    async function init() {
+      const me = await api('/api/me');
+      document.getElementById('who').textContent = me.name;
+      ref = await api('/api/reference');
+      document.getElementById('f-regiao').innerHTML = '<option value="">Todas regiões</option>' +
+        ref.regioes.map((r) => `<option value="${r.sigla}">${esc(r.nome)} (${r.sigla})</option>`).join('');
+      document.getElementById('f-grupo').innerHTML = '<option value="">Todos grupos</option>' +
+        ref.grupos.map((g) => `<option>${esc(g)}</option>`).join('');
+      document.getElementById('prom-total').textContent = ref.promotores.length;
+      loadPhotos();
+      loadPendentes();
+    }
+
+    // tabs
+    document.querySelectorAll('.tabs button').forEach((b) => b.addEventListener('click', () => {
+      document.querySelectorAll('.tabs button').forEach((x) => x.classList.remove('active'));
+      b.classList.add('active');
+      ['fotos', 'aprovar', 'promotores', 'listas'].forEach((t) =>
+        document.getElementById('tab-' + t).classList.toggle('hidden', t !== b.dataset.tab));
+      if (b.dataset.tab === 'aprovar') loadPendentes();
+      if (b.dataset.tab === 'promotores') loadUsers();
+      if (b.dataset.tab === 'listas') renderLists();
+    }));
+
+    // ---- aprovar promotor ----
+    async function loadPendentes() {
+      const rows = await api('/api/admin/pendentes');
+      const badge = document.getElementById('pend-badge');
+      badge.textContent = rows.length;
+      badge.classList.toggle('hidden', rows.length === 0);
+      document.getElementById('pend-list').innerHTML = rows.length ? rows.map((p) => `
+        <div class="list-item">
+          <span><b>${esc(p.nome)}</b> <span class="muted">— por ${esc(p.criadoPor || '?')} · ${new Date(p.criadoEm).toLocaleString('pt-BR')}</span></span>
+          <span><button onclick="aprovarPend('${p.id}','${esc(p.nome).replace(/'/g,"\\'")}')">✓ Aprovar</button>
+          <button class="danger" onclick="rejeitarPend('${p.id}')">✗ Rejeitar</button></span>
+        </div>`).join('') : '<div class="muted">Nenhum promotor aguardando aprovação.</div>';
+    }
+    async function aprovarPend(id, nome) {
+      await api('/api/admin/pendentes/' + id + '/aprovar', { method: 'POST' });
+      ref = await api('/api/reference'); // banco de promotores cresceu
+      document.getElementById('prom-total').textContent = ref.promotores.length;
+      toast(`"${nome}" aprovado e adicionado ao banco`);
+      loadPendentes();
+    }
+    async function rejeitarPend(id) {
+      if (!confirm('Rejeitar este cadastro?')) return;
+      await api('/api/admin/pendentes/' + id, { method: 'DELETE' });
+      loadPendentes();
+    }
+
+    // ---- fotos ----
+    let qTimer;
+    document.getElementById('f-q').addEventListener('input', () => { clearTimeout(qTimer); qTimer = setTimeout(loadPhotos, 300); });
+    ['f-regiao', 'f-grupo', 'f-status'].forEach((id) => document.getElementById(id).addEventListener('change', loadPhotos));
+    const val = (id) => document.getElementById(id).value;
+
+    function query() {
+      return new URLSearchParams({ q: val('f-q'), regiao: val('f-regiao'), grupo: val('f-grupo'), status: val('f-status') });
+    }
+    async function loadPhotos() {
+      const rows = await api('/api/admin/submissions?' + query());
+      document.getElementById('count').textContent = `${rows.length} foto(s)`;
+      document.getElementById('empty').classList.toggle('hidden', rows.length > 0);
+      document.getElementById('grid').innerHTML = rows.map(photoCard).join('');
+    }
+
+    function photoCard(s) {
+      const pontos = ref.pontosExtra.map((p) => {
+        const on = (s.pontosExtra || []).includes(p);
+        const cor = on ? `background:${corPonto(p)};border-color:transparent;color:#fff;` : '';
+        return `<button class="${on ? '' : 'ghost'}" style="padding:4px 8px;font-size:11px;${cor}" onclick="togPonto('${s.id}','${esc(p).replace(/'/g,"\\'")}',${!on})">${esc(p)}</button>`;
+      }).join('');
+      const cor = PREAV_COR[s.preAvaliacao] || 'var(--line)';
+      const preav = ref.preAvaliacoes.map((p) => `<option ${s.preAvaliacao === p ? 'selected' : ''}>${p}</option>`).join('');
+      const dataExp = s.dataExposicao ? new Date(s.dataExposicao + 'T00:00').toLocaleDateString('pt-BR') : '—';
+      return `<div class="photo" style="grid-column:span 1;">
+        <img src="/api/file/${s.id}" loading="lazy" onclick="zoom('${s.id}')" />
+        <div class="meta">
+          <div class="tags"><b>${esc(s.cliente)}</b> · ${esc(s.regiao)}${s.grupo ? ' · ' + esc(s.grupo) : ''}<br>
+            📍 ${esc(s.endereco || '—')}<br>
+            👤 ${esc(s.promotor)} ${s.promotorNoBanco ? '<span class="pill on">no banco</span>' : '<span class="pill" style="color:var(--amber)">fora do banco</span>'}<br>
+            <span class="muted">Exposição: ${dataExp} · SM: ${esc(s.senhaMensal)} · SS: ${esc(s.senhaSemanal)}</span><br>
+            <span class="muted">Enviado ${new Date(s.createdAt).toLocaleString('pt-BR')}</span>${s.baixado ? ' · <span class="pill on">baixada</span>' : ''}${s.pago ? ' · <span class="pill on">pago</span>' : ''}</div>
+
+          <label style="margin-top:8px;">Pré-avaliação</label>
+          <select style="border-left:6px solid ${cor};" onchange="setField('${s.id}','preAvaliacao',this.value)"><option value="">—</option>${preav}</select>
+
+          <label>Ponto extra</label>
+          <div class="toggles">${pontos}</div>
+
+          <div class="toggles" style="margin-top:6px;">
+            <button class="${s.validado === true ? '' : 'ghost'}" style="font-size:11px;" onclick="setField('${s.id}','validado',true)">✓ Validar</button>
+            <button class="${s.validado === false ? 'danger' : 'ghost'}" style="font-size:11px;" onclick="setField('${s.id}','validado',false)">✗ Recusar</button>
+            <button class="${s.pago ? '' : 'ghost'}" style="font-size:11px;" onclick="setField('${s.id}','pago',${!s.pago})">${s.pago ? '💰 Pago' : 'Marcar pago'}</button>
+          </div>
+
+          <textarea placeholder="observação (ex: motivo da recusa)..." onchange="setField('${s.id}','observacao',this.value)">${esc(s.observacao)}</textarea>
+          <div style="text-align:right;margin-top:6px;"><button class="ghost" style="font-size:11px;color:var(--red);" onclick="delPhoto('${s.id}')">🗑 Excluir foto</button></div>
+        </div>
+      </div>`;
+    }
+    async function delPhoto(id) {
+      if (!confirm('Excluir esta foto em definitivo? Não dá pra desfazer.')) return;
+      await api('/api/admin/submissions/' + id, { method: 'DELETE' });
+      toast('Foto excluída'); loadPhotos();
+    }
+    const PREAV_COR = { REGULAR: 'var(--yellow)', BOM: 'var(--green)', EXCELENTE: 'var(--purple)' };
+    async function setField(id, field, value) {
+      await api('/api/admin/submissions/' + id, { method: 'PATCH', body: JSON.stringify({ [field]: value }) });
+      if (field === 'observacao') toast('Observação salva'); else loadPhotos();
+    }
+    async function togPonto(id, ponto, add) {
+      const rows = await api('/api/admin/submissions?' + query());
+      const s = rows.find((x) => x.id === id);
+      let pontos = s.pontosExtra || [];
+      pontos = add ? [...pontos, ponto] : pontos.filter((p) => p !== ponto);
+      await api('/api/admin/submissions/' + id, { method: 'PATCH', body: JSON.stringify({ pontosExtra: pontos }) });
+      loadPhotos();
+    }
+    function zoom(id) { document.getElementById('modalimg').src = '/api/file/' + id; document.getElementById('modal').classList.add('show'); }
+
+    // baixa via fetch pra conseguir mostrar erro num pop-up (em vez de abrir o JSON cru)
+    async function downloadFile(url, msgVazio) {
+      toast('Preparando download...');
+      const res = await fetch(url);
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        return toast(e.error === 'Nada pra baixar' && msgVazio ? msgVazio : (e.error || 'Erro ao baixar'), 'bad');
+      }
+      const blob = await res.blob();
+      const cd = res.headers.get('content-disposition') || '';
+      const m = cd.match(/filename="(.+?)"/);
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = m ? m[1] : 'download';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      toast('Download iniciado ✓');
+    }
+    // ZIP montado no navegador (JSZip) — o servidor só dá o manifesto
+    async function downloadZip(onlyNew) {
+      const btn = document.getElementById(onlyNew ? 'btn-download' : 'btn-download-all');
+      const original = btn.textContent;
+      btn.disabled = true;
+      try {
+        const { items } = await api('/api/admin/download-manifest?onlyNew=' + (onlyNew ? '1' : '0'));
+        if (!items.length) { toast('Nenhuma foto pra baixar.', 'bad'); return; }
+        const zip = new JSZip();
+        let done = 0, falhas = 0;
+        for (const it of items) {
+          btn.textContent = `Baixando ${++done}/${items.length}...`;
+          try {
+            const resp = await fetch(it.url);
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            zip.file(it.path, await resp.blob());
+          } catch (e) { falhas++; console.error('falhou', it.path, e.message); }
+        }
+        btn.textContent = 'Compactando...';
+        const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `memphis-pdv-${new Date().toISOString().slice(0, 10)}.zip`;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+        // marca como baixadas só após o ZIP pronto
+        await api('/api/admin/mark-downloaded', { method: 'POST', body: JSON.stringify({ ids: items.map((i) => i.id) }) });
+        toast(`ZIP com ${items.length - falhas} foto(s) gerado ✓` + (falhas ? ` (${falhas} falharam)` : ''), falhas ? 'bad' : 'ok');
+        loadPhotos();
+      } catch (e) { toast(e.message, 'bad'); }
+      finally { btn.disabled = false; btn.textContent = original; }
+    }
+    document.getElementById('btn-download').onclick = () => downloadZip(true);
+    document.getElementById('btn-download-all').onclick = () => downloadZip(false);
+    document.getElementById('btn-excel').onclick = () => downloadFile('/api/admin/export.xlsx?' + query());
+    document.getElementById('btn-purge').onclick = async () => {
+      if (!confirm('Apagar DEFINITIVAMENTE as fotos já baixadas?')) return;
+      const r = await api('/api/admin/purge', { method: 'POST' });
+      toast(`${r.removed} removida(s)`); loadPhotos();
+    };
+
+    // ---- contas ----
+    async function loadUsers() {
+      const users = await api('/api/admin/users');
+      document.getElementById('u-count').textContent = users.length;
+      document.getElementById('u-list').innerHTML = users.map((u) => {
+        const ehAdmin = u.role === 'admin';
+        const tag = ehAdmin ? '<span class="pill" style="background:var(--teal-soft);color:var(--teal);border-color:transparent">admin</span>'
+          : (u.active === false ? '<span class="pill" style="color:var(--red)">banido</span>' : '');
+        // admin não pode ser banido nem excluído (trava de segurança)
+        const acoes = ehAdmin
+          ? `<button class="secondary" onclick="resetPass('${u.id}')">Nova senha</button>`
+          : `<button class="${u.active === false ? '' : 'danger'}" onclick="toggleBan('${u.id}','${esc(u.name).replace(/'/g, "\\'")}',${u.active === false})">${u.active === false ? 'Desbanir' : '🚫 Banir'}</button>
+             <button class="secondary" onclick="resetPass('${u.id}')">Nova senha</button>
+             <button class="ghost" onclick="delUser('${u.id}','${esc(u.name).replace(/'/g, "\\'")}')">Excluir</button>`;
+        return `<div class="list-item" style="${u.active === false ? 'opacity:.6;' : ''}">
+          <span><b>${esc(u.name)}</b> — ${esc(u.email)} ${tag}</span>
+          <span>${acoes}</span></div>`;
+      }).join('') || '<div class="muted">Nenhuma conta.</div>';
+    }
+    async function toggleBan(id, name, banido) {
+      const ativar = banido; // se está banido, a ação é ativar
+      if (!ativar && !confirm(`Banir ${name}? Ele não vai mais conseguir entrar nem enviar fotos.`)) return;
+      await api('/api/admin/users/' + id + '/active', { method: 'POST', body: JSON.stringify({ active: ativar }) });
+      toast(ativar ? 'Promotor reativado' : 'Promotor banido'); loadUsers();
+    }
+    document.getElementById('u-genpass').onclick = () => {
+      document.getElementById('u-pass').value = Math.random().toString(36).slice(2, 8) + Math.floor(Math.random() * 90 + 10);
+      toast('Senha gerada — copie!');
+    };
+    document.getElementById('u-create').onclick = async () => {
+      try {
+        const body = { name: val('u-name'), email: val('u-email'), password: val('u-pass'), role: val('u-role') };
+        await api('/api/admin/users', { method: 'POST', body: JSON.stringify(body) });
+        toast(`Conta de ${body.role} criada. Senha: ${body.password}`);
+        ['u-name', 'u-email', 'u-pass'].forEach((i) => (document.getElementById(i).value = ''));
+        loadUsers();
+      } catch (e) { toast(e.message, 'bad'); }
+    };
+    async function resetPass(id) {
+      const p = prompt('Nova senha:', Math.random().toString(36).slice(2, 8) + Math.floor(Math.random() * 90 + 10));
+      if (!p) return;
+      await api('/api/admin/users/' + id + '/password', { method: 'POST', body: JSON.stringify({ password: p }) });
+      toast('Senha alterada para: ' + p);
+    }
+    async function delUser(id, name) {
+      if (!confirm('Excluir ' + name + '?')) return;
+      await api('/api/admin/users/' + id, { method: 'DELETE' }); loadUsers();
+    }
+
+    // ---- listas ----
+    let promFilter = '';
+    document.getElementById('prom-search').addEventListener('input', (e) => { promFilter = e.target.value.toLowerCase(); renderLists(); });
+    function renderLists() {
+      document.getElementById('cfg-sm').value = ref.senhas.senhaMensal || '';
+      document.getElementById('cfg-ss').value = ref.senhas.senhaSemanal || '';
+      document.getElementById('list-grupos').innerHTML = ref.grupos.map((v) =>
+        `<div class="list-item"><span>${esc(v)}</span><button class="danger" onclick="delItem('grupos','${esc(v).replace(/'/g,"\\'")}')">×</button></div>`).join('');
+      const proms = ref.promotores.filter((p) => p.toLowerCase().includes(promFilter)).slice(0, 200);
+      document.getElementById('list-promotores').innerHTML = proms.map((v) =>
+        `<div class="list-item"><span>${esc(v)}</span><button class="danger" onclick="delItem('promotores','${esc(v).replace(/'/g,"\\'")}')">×</button></div>`).join('')
+        + (ref.promotores.filter((p) => p.toLowerCase().includes(promFilter)).length > 200 ? '<div class="muted">...filtre pra ver mais</div>' : '');
+    }
+    document.querySelectorAll('[data-add]').forEach((btn) => btn.onclick = async () => {
+      const type = btn.dataset.add, input = document.getElementById('add-' + type);
+      if (!input.value.trim()) return;
+      ref[type] = await api('/api/admin/ref/' + type, { method: 'POST', body: JSON.stringify({ value: input.value }) });
+      input.value = ''; renderLists(); refreshGrupoFilter();
+    });
+    async function delItem(type, value) {
+      ref[type] = await api('/api/admin/ref/' + type, { method: 'DELETE', body: JSON.stringify({ value }) });
+      renderLists(); refreshGrupoFilter();
+    }
+    function refreshGrupoFilter() {
+      document.getElementById('f-grupo').innerHTML = '<option value="">Todos grupos</option>' + ref.grupos.map((g) => `<option>${esc(g)}</option>`).join('');
+    }
+
+    document.getElementById('cfg-save').onclick = async () => {
+      ref.senhas = await api('/api/admin/config', { method: 'PATCH', body: JSON.stringify({ senhaMensal: val('cfg-sm'), senhaSemanal: val('cfg-ss') }) });
+      toast('Senhas atualizadas ✓');
+    };
+
+    init().catch((e) => toast(e.message, 'bad'));
+  </script>
+</body>
+</html>
