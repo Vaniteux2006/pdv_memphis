@@ -12,7 +12,9 @@ const mailer = require('./lib/mailer'); // envio de email (reset de senha)
 
 const app = express();
 app.set('trust proxy', 1); // atrás de proxy (Vercel/Discloud) — IP real via X-Forwarded-For
-const PORT = process.env.PORT || 3000;
+// Discloud exige porta 8080 + host 0.0.0.0. PORT pode ser sobrescrita por env (ex: testes locais).
+const PORT = process.env.PORT || 8080;
+const HOST = process.env.HOST || '0.0.0.0';
 const JWT_SECRET = process.env.SESSION_SECRET || 'dev-secret-troque';
 const COOKIE = 'mp_token';
 const isProd = process.env.NODE_ENV === 'production';
@@ -363,12 +365,12 @@ app.use((err, req, res, next) => {
   res.status(err.status || 500).json({ error: err.message || 'Erro interno' });
 });
 
-// Rodando direto (local): conecta no Mongo e sobe o servidor HTTP.
+// Rodando direto (Discloud/local): conecta no Mongo e sobe o servidor HTTP em 0.0.0.0:8080.
 // Na Vercel: server.js é importado como função (module.exports = app) e o
 // middleware "ready" cuida da inicialização sob demanda — sem app.listen.
 if (require.main === module) {
   ready()
-    .then(() => app.listen(PORT, () => console.log(`\n  Memphis PDV em http://localhost:${PORT}\n`)))
+    .then(() => app.listen(PORT, HOST, () => console.log(`\n  Memphis PDV rodando em ${HOST}:${PORT}\n`)))
     .catch((e) => { console.error('Falha ao iniciar (Mongo):', e.message); process.exit(1); });
 }
 
