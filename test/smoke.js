@@ -148,6 +148,16 @@ async function uploadCloud(cookie, tipo, file, filename, ct) {
   await req('DELETE', '/api/admin/submissions/' + subR.id, { cookie: ac });
   ck('excluir foto remove do banco', J((await req('GET', '/api/admin/submissions', { cookie: ac })).body).length === 0);
 
+  // ---- troca de senha obrigatória no 1º login ----
+  await req('POST', '/api/admin/users', { cookie: ac, body: { name: 'Novato', email: 'novato@local', password: 'prov123', role: 'promotor', mustChangePassword: true } });
+  ck('login sinaliza troca obrigatória', J((await req('POST', '/api/login', { body: { email: 'novato@local', password: 'prov123' } })).body).mustChangePassword === true);
+  const nc = (await req('POST', '/api/login', { body: { email: 'novato@local', password: 'prov123' } })).cookie;
+  ck('/me sinaliza troca', J((await req('GET', '/api/me', { cookie: nc })).body).mustChangePassword === true);
+  ck('troca com senha atual errada falha', (await req('POST', '/api/change-password', { cookie: nc, body: { currentPassword: 'errada', newPassword: 'novasenha9' } })).status === 400);
+  ck('troca senha ok', (await req('POST', '/api/change-password', { cookie: nc, body: { currentPassword: 'prov123', newPassword: 'novasenha9' } })).status === 200);
+  ck('após troca, /me não pede mais', J((await req('GET', '/api/me', { cookie: (await req('POST', '/api/login', { body: { email: 'novato@local', password: 'novasenha9' } })).cookie })).body).mustChangePassword === false);
+  ck('senha provisória não loga mais', (await req('POST', '/api/login', { body: { email: 'novato@local', password: 'prov123' } })).status === 401);
+
   // ---- recuperação de senha (link de redefinição) ----
   const fp = J((await req('POST', '/api/forgot-password', { body: { email: 'joao@local' } })).body);
   ck('forgot-password responde genérico + devLink', fp.ok === true && !!fp.devLink, fp.devLink && fp.devLink.slice(0, 40));

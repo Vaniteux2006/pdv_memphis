@@ -101,9 +101,18 @@ app.post('/api/login', loginLimiter, ah(async (req, res) => {
   if (!u || !u.active || !db.checkPassword(u, password || ''))
     return res.status(401).json({ error: 'E-mail ou senha incorretos' });
   setAuthCookie(res, u);
-  res.json({ role: u.role, name: u.name });
+  res.json({ role: u.role, name: u.name, mustChangePassword: !!u.mustChangePassword });
 }));
 app.post('/api/logout', (req, res) => { res.clearCookie(COOKIE, { path: '/' }); res.json({ ok: true }); });
+
+// promotor troca a própria senha (obrigatório no 1º login)
+app.post('/api/change-password', requireAuth, ah(async (req, res) => {
+  try {
+    await db.changeOwnPassword(req.user.id, req.body.currentPassword, req.body.newPassword);
+    setAuthCookie(res, req.user); // renova o token
+    res.json({ ok: true });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+}));
 
 // ---------- recuperação de senha (link de redefinição) ----------
 app.post('/api/forgot-password', resetLimiter, ah(async (req, res) => {
@@ -123,7 +132,7 @@ app.post('/api/reset-password', resetLimiter, ah(async (req, res) => {
   catch (e) { res.status(400).json({ error: e.message }); }
 }));
 app.get('/api/me', requireAuth, (req, res) =>
-  res.json({ id: req.user.id, email: req.user.email, name: req.user.name, role: req.user.role }));
+  res.json({ id: req.user.id, email: req.user.email, name: req.user.name, role: req.user.role, mustChangePassword: !!req.user.mustChangePassword }));
 
 // ---------- referência ----------
 app.get('/api/reference', requireAuth, ah(async (req, res) => res.json(await db.reference())));
@@ -163,9 +172,9 @@ app.delete('/api/admin/pendentes/:id', requireAuth, requireAdmin, ah(async (req,
 app.get('/api/admin/users', requireAuth, requireAdmin, ah(async (req, res) => res.json(await db.listUsers())));
 app.post('/api/admin/users', requireAuth, requireAdmin, ah(async (req, res) => {
   try {
-    const { email, name, password, role } = req.body;
+    const { email, name, password, role, mustChangePassword } = req.body;
     if (!email || !name || !password) return res.status(400).json({ error: 'Preencha email, nome e senha' });
-    res.json(await db.createUser({ email, name, password, role }));
+    res.json(await db.createUser({ email, name, password, role, mustChangePassword }));
   } catch (e) { res.status(400).json({ error: e.message }); }
 }));
 app.post('/api/admin/users/:id/password', requireAuth, requireAdmin, ah(async (req, res) => {
@@ -293,59 +302,69 @@ app.post('/api/admin/mark-downloaded', requireAuth, requireAdmin, ah(async (req,
   res.json({ ok: true, count: ids.length });
 }));
 
-// ---------- EXPORT EXCEL (aba por região) ----------
-app.get('/api/admin/export.xlsx', requireAuth, requireAdmin, ah(async (req, res) => {
-  const rows = withRefs(await db.listSubmissions(req.query));
-  const wb = new ExcelJS.Workbook();
-  wb.creator = 'Memphis PDV';
-
-  const cols = [
-    { header: 'Seq', key: 'seq', width: 6 },
-    { header: 'REF', key: 'ref', width: 10 },
-    { header: 'Data da Exposição', key: 'dataExp', width: 16 },
-    { header: 'Cliente', key: 'cliente', width: 28 },
-    { header: 'Endereço da Loja', key: 'endereco', width: 32 },
-    { header: 'Promotor', key: 'promotor', width: 26 },
-    { header: 'GRUPO', key: 'grupo', width: 18 },
-    { header: 'Pré-Avaliação', key: 'preav', width: 14 },
-    { header: 'Região', key: 'regiao', width: 8 },
-    { header: 'COLAR EM PASTAS', key: 'pasta', width: 40 },
-    { header: 'Ponto Extra', key: 'pontos', width: 28 },
-    { header: 'Validado', key: 'validado', width: 10 },
-    { header: 'Pago', key: 'pago', width: 8 },
-    { header: 'Observação', key: 'obs', width: 30 },
-    { header: 'Senha Mensal', key: 'sm', width: 14 },
-    { header: 'Senha Semanal', key: 'ss', width: 14 },
-    { header: 'Enviado em', key: 'data', width: 18 },
-    { header: 'Promotor no banco?', key: 'noBanco', width: 16 },
-  ];
-
-  for (const reg of db.REGIOES) {
-    const regRows = rows.filter((s) => s.regiao === reg.sigla);
-    const ws = wb.addWorksheet(`${reg.nome} - ${reg.sigla}`);
-    ws.columns = cols;
-    ws.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
-    ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1C9CC0' } };
-    let seq = 1;
-    for (const s of regRows) {
-      ws.addRow({
-        seq: seq++, ref: s.ref,
-        dataExp: s.dataExposicao ? new Date(s.dataExposicao + 'T00:00').toLocaleDateString('pt-BR') : '',
-        data: new Date(s.createdAt).toLocaleString('pt-BR'),
-        cliente: s.cliente, endereco: s.endereco, promotor: s.promotor, grupo: s.grupo,
-        preav: s.preAvaliacao, regiao: s.regiao, pasta: s.pasta,
-        pontos: (s.pontosExtra || []).join(', '),
-        validado: s.validado === true ? 'Sim' : s.validado === false ? 'Recusado' : '',
-        pago: s.pago ? 'Sim' : '',
-        obs: s.observacao, sm: s.senhaMensal, ss: s.senhaSemanal,
-        noBanco: s.promotorNoBanco ? 'Sim' : 'NÃO',
-      });
-    }
-    ws.autoFilter = { from: 'A1', to: { row: 1, column: cols.length } };
+// ---------- EXPORT EXCEL: preenche o MODELO oficial (mantém fórmulas/formatação) ----------
+const MODELO_XLSX = path.join(__dirname, 'data', 'modelo-registro.xlsx');
+const ABA_REGIAO = { NE: 'NORDESTE', CN: 'CENTRO NORTE', SP: 'SÃO PAULO', SE: 'SUDESTE', SUL: 'SUL' };
+// cada aba tem layout próprio — mapeia as colunas de VALOR pelo nome do cabeçalho (linha 7)
+function mapColunas(ws) {
+  const norm = (v) => {
+    let s = v && typeof v === 'object' ? (v.text || (v.richText ? v.richText.map((t) => t.text).join('') : '')) : v;
+    return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+  };
+  const m = {}, row = ws.getRow(7);
+  for (let c = 1; c <= 20; c++) {
+    const h = norm(row.getCell(c).value);
+    if (!h) continue;
+    if (h === 'seq') m.seq = c;
+    else if (h === 'data') m.data = c;
+    else if (h === 'cliente') m.cliente = c;
+    else if (h.startsWith('promotor')) m.promotor = c;
+    else if (h === 'grupo') m.grupo = c;
+    else if (h.includes('avalia')) m.preav = c;
+    else if (h.includes('regi')) m.regiao = c;
+    else if (h === 'obs') m.obs = c;
   }
+  return m;
+}
 
+// se a região tiver mais linhas que a área formatada do template, clona a linha-modelo (8)
+function clonarLinha(ws, r) {
+  if (ws.getRow(r).getCell(2).formula) return; // já é linha do template
+  const modelo = ws.getRow(8), row = ws.getRow(r);
+  for (let c = 1; c <= 30; c++) {
+    const mc = modelo.getCell(c), nc = row.getCell(c);
+    try { nc.style = JSON.parse(JSON.stringify(mc.style || {})); } catch {}
+    if (mc.formula) nc.value = { formula: mc.formula.replace(/(?<![$0-9])8(?![0-9])/g, r) };
+  }
+}
+
+app.get('/api/admin/export.xlsx', requireAuth, requireAdmin, ah(async (req, res) => {
+  const rows = await db.listSubmissions(req.query);
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.readFile(MODELO_XLSX);
+  for (const reg of db.REGIOES) {
+    const ws = wb.getWorksheet(ABA_REGIAO[reg.sigla]);
+    if (!ws) continue;
+    const m = mapColunas(ws);
+    const regRows = rows.filter((s) => s.regiao === reg.sigla);
+    regRows.forEach((s, i) => {
+      const r = 8 + i;
+      clonarLinha(ws, r);
+      const row = ws.getRow(r);
+      if (m.seq) row.getCell(m.seq).value = i + 1;
+      if (m.data && s.dataExposicao) { const c = row.getCell(m.data); c.value = new Date(s.dataExposicao + 'T00:00'); c.numFmt = 'd-mmm'; }
+      if (m.cliente) row.getCell(m.cliente).value = s.cliente;
+      if (m.promotor) row.getCell(m.promotor).value = s.promotor;
+      if (m.grupo) row.getCell(m.grupo).value = s.grupo || '';
+      if (m.preav) row.getCell(m.preav).value = s.preAvaliacao || '';
+      if (m.regiao) row.getCell(m.regiao).value = s.regiao;
+      if (m.obs) row.getCell(m.obs).value = s.observacao || '';
+    });
+  }
+  wb.calcProperties = wb.calcProperties || {};
+  wb.calcProperties.fullCalcOnLoad = true;
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-  res.setHeader('Content-Disposition', `attachment; filename="memphis-pdv-${new Date().toISOString().slice(0, 10)}.xlsx"`);
+  res.setHeader('Content-Disposition', `attachment; filename="registro-clientes-${new Date().toISOString().slice(0, 10)}.xlsx"`);
   await wb.xlsx.write(res);
   res.end();
 }));

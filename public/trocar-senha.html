@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Memphis PDV — Trocar senha</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&family=Sacramento&display=swap" media="print" onload="this.media='all'" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="/"><img src="/logo-memphis.webp" alt="Memphis" class="brand-logo" /></a>
+    <button class="ghost" onclick="logout()" style="font-size:13px;">Sair</button>
+  </header>
+
+  <div class="login-wrap">
+    <div class="card login-card">
+      <h1>Criar sua senha</h1>
+      <p class="muted">Primeiro acesso: troque a senha provisória por uma só sua.</p>
+      <form id="form">
+        <label>Senha provisória (a que você recebeu)</label>
+        <input id="atual" type="password" autocomplete="current-password" required />
+        <label>Nova senha (mín. 6 caracteres)</label>
+        <input id="nova" type="password" autocomplete="new-password" minlength="6" required />
+        <label>Confirmar nova senha</label>
+        <input id="nova2" type="password" autocomplete="new-password" minlength="6" required />
+        <div class="err" id="err"></div>
+        <button type="submit" style="width:100%;margin-top:8px;">Salvar e entrar</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="/common.js"></script>
+  <script>
+    let role = 'promotor';
+    (async () => {
+      try {
+        const me = await fetch('/api/me');
+        if (!me.ok) { location.href = '/login.html'; return; }
+        const u = await me.json();
+        role = u.role;
+        // se já trocou, não precisa ficar aqui
+        if (!u.mustChangePassword) location.href = role === 'admin' ? '/admin.html' : '/promotor.html';
+      } catch { location.href = '/login.html'; }
+    })();
+
+    document.getElementById('form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const err = document.getElementById('err'); err.textContent = '';
+      const a = document.getElementById('atual').value;
+      const n = document.getElementById('nova').value, n2 = document.getElementById('nova2').value;
+      if (n !== n2) { err.textContent = 'As senhas não conferem.'; return; }
+      if (n === a) { err.textContent = 'A nova senha precisa ser diferente da provisória.'; return; }
+      try {
+        await api('/api/change-password', { method: 'POST', body: JSON.stringify({ currentPassword: a, newPassword: n }) });
+        toast('Senha criada! Entrando...', 'ok');
+        setTimeout(() => (location.href = role === 'admin' ? '/admin.html' : '/promotor.html'), 1200);
+      } catch (ex) { err.textContent = ex.message; }
+    });
+  </script>
+</body>
+</html>

@@ -47,7 +47,8 @@
         const me = await fetch('/api/me');
         if (me.ok) {
           const u = await me.json();
-          location.href = u.role === 'admin' ? '/admin.html' : '/promotor.html';
+          if (u.mustChangePassword) location.href = '/trocar-senha.html';
+          else location.href = u.role === 'admin' ? '/admin.html' : '/promotor.html';
         }
       } catch {}
     })();
@@ -76,7 +77,8 @@
           pwInput.focus();
           return;
         }
-        location.href = data.role === 'admin' ? '/admin.html' : '/promotor.html';
+        if (data.mustChangePassword) location.href = '/trocar-senha.html';
+        else location.href = data.role === 'admin' ? '/admin.html' : '/promotor.html';
       } catch (ex) {
         err.textContent = 'Erro de conexão. Tente de novo.';
         toast('Erro de conexão', 'bad');
