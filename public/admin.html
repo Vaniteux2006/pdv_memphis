@@ -148,8 +148,8 @@
       document.getElementById('pend-list').innerHTML = rows.length ? rows.map((p) => `
         <div class="list-item">
           <span><b>${esc(p.nome)}</b> <span class="muted">— por ${esc(p.criadoPor || '?')} · ${new Date(p.criadoEm).toLocaleString('pt-BR')}</span></span>
-          <span><button onclick="aprovarPend('${p.id}','${esc(p.nome).replace(/'/g,"\\'")}')">✓ Aprovar</button>
-          <button class="danger" onclick="rejeitarPend('${p.id}')">✗ Rejeitar</button></span>
+          <span><button data-act="aprovar-pend" data-id="${esc(p.id)}" data-nome="${esc(p.nome)}">✓ Aprovar</button>
+          <button class="danger" data-act="rejeitar-pend" data-id="${esc(p.id)}">✗ Rejeitar</button></span>
         </div>`).join('') : '<div class="muted">Nenhum promotor aguardando aprovação.</div>';
     }
     async function aprovarPend(id, nome) {
@@ -185,13 +185,13 @@
       const pontos = ref.pontosExtra.map((p) => {
         const on = (s.pontosExtra || []).includes(p);
         const cor = on ? `background:${corPonto(p)};border-color:transparent;color:#fff;` : '';
-        return `<button class="${on ? '' : 'ghost'}" style="padding:4px 8px;font-size:11px;${cor}" onclick="togPonto('${s.id}','${esc(p).replace(/'/g,"\\'")}',${!on})">${esc(p)}</button>`;
+        return `<button class="${on ? '' : 'ghost'}" style="padding:4px 8px;font-size:11px;${cor}" data-act="tog-ponto" data-id="${esc(s.id)}" data-ponto="${esc(p)}" data-on="${on ? 1 : 0}">${esc(p)}</button>`;
       }).join('');
       const cor = PREAV_COR[s.preAvaliacao] || 'var(--line)';
-      const preav = ref.preAvaliacoes.map((p) => `<option ${s.preAvaliacao === p ? 'selected' : ''}>${p}</option>`).join('');
+      const preav = ref.preAvaliacoes.map((p) => `<option ${s.preAvaliacao === p ? 'selected' : ''}>${esc(p)}</option>`).join('');
       const dataExp = s.dataExposicao ? new Date(s.dataExposicao + 'T00:00').toLocaleDateString('pt-BR') : '—';
       return `<div class="photo" style="grid-column:span 1;">
-        <img src="/api/file/${s.id}" loading="lazy" onclick="zoom('${s.id}')" />
+        <img src="/api/file/${esc(s.id)}" loading="lazy" data-act="zoom" data-id="${esc(s.id)}" />
         <div class="meta">
           <div class="tags"><b>${esc(s.cliente)}</b> · ${esc(s.regiao)}${s.grupo ? ' · ' + esc(s.grupo) : ''}<br>
             📍 ${esc(s.endereco || '—')}<br>
@@ -200,19 +200,19 @@
             <span class="muted">Enviado ${new Date(s.createdAt).toLocaleString('pt-BR')}</span>${s.baixado ? ' · <span class="pill on">baixada</span>' : ''}${s.pago ? ' · <span class="pill on">pago</span>' : ''}</div>
 
           <label style="margin-top:8px;">Pré-avaliação</label>
-          <select style="border-left:6px solid ${cor};" onchange="setField('${s.id}','preAvaliacao',this.value)"><option value="">—</option>${preav}</select>
+          <select style="border-left:6px solid ${cor};" data-act="set-preav" data-id="${esc(s.id)}"><option value="">—</option>${preav}</select>
 
           <label>Ponto extra</label>
           <div class="toggles">${pontos}</div>
 
           <div class="toggles" style="margin-top:6px;">
-            <button class="${s.validado === true ? '' : 'ghost'}" style="font-size:11px;" onclick="setField('${s.id}','validado',true)">✓ Validar</button>
-            <button class="${s.validado === false ? 'danger' : 'ghost'}" style="font-size:11px;" onclick="setField('${s.id}','validado',false)">✗ Recusar</button>
-            <button class="${s.pago ? '' : 'ghost'}" style="font-size:11px;" onclick="setField('${s.id}','pago',${!s.pago})">${s.pago ? '💰 Pago' : 'Marcar pago'}</button>
+            <button class="${s.validado === true ? '' : 'ghost'}" style="font-size:11px;" data-act="set-validado" data-id="${esc(s.id)}" data-val="1">✓ Validar</button>
+            <button class="${s.validado === false ? 'danger' : 'ghost'}" style="font-size:11px;" data-act="set-validado" data-id="${esc(s.id)}" data-val="0">✗ Recusar</button>
+            <button class="${s.pago ? '' : 'ghost'}" style="font-size:11px;" data-act="set-pago" data-id="${esc(s.id)}" data-val="${s.pago ? 0 : 1}">${s.pago ? '💰 Pago' : 'Marcar pago'}</button>
           </div>
 
-          <textarea placeholder="observação (ex: motivo da recusa)..." onchange="setField('${s.id}','observacao',this.value)">${esc(s.observacao)}</textarea>
-          <div style="text-align:right;margin-top:6px;"><button class="ghost" style="font-size:11px;color:var(--red);" onclick="delPhoto('${s.id}')">🗑 Excluir foto</button></div>
+          <textarea placeholder="observação (ex: motivo da recusa)..." data-act="set-obs" data-id="${esc(s.id)}">${esc(s.observacao)}</textarea>
+          <div style="text-align:right;margin-top:6px;"><button class="ghost" style="font-size:11px;color:var(--red);" data-act="del-photo" data-id="${esc(s.id)}">🗑 Excluir foto</button></div>
         </div>
       </div>`;
     }
@@ -305,10 +305,10 @@
           : (u.active === false ? '<span class="pill" style="color:var(--red)">banido</span>' : '');
         // admin não pode ser banido nem excluído (trava de segurança)
         const acoes = ehAdmin
-          ? `<button class="secondary" onclick="resetPass('${u.id}')">Nova senha</button>`
-          : `<button class="${u.active === false ? '' : 'danger'}" onclick="toggleBan('${u.id}','${esc(u.name).replace(/'/g, "\\'")}',${u.active === false})">${u.active === false ? 'Desbanir' : '🚫 Banir'}</button>
-             <button class="secondary" onclick="resetPass('${u.id}')">Nova senha</button>
-             <button class="ghost" onclick="delUser('${u.id}','${esc(u.name).replace(/'/g, "\\'")}')">Excluir</button>`;
+          ? `<button class="secondary" data-act="reset-pass" data-id="${esc(u.id)}">Nova senha</button>`
+          : `<button class="${u.active === false ? '' : 'danger'}" data-act="toggle-ban" data-id="${esc(u.id)}" data-nome="${esc(u.name)}" data-banido="${u.active === false ? 1 : 0}">${u.active === false ? 'Desbanir' : '🚫 Banir'}</button>
+             <button class="secondary" data-act="reset-pass" data-id="${esc(u.id)}">Nova senha</button>
+             <button class="ghost" data-act="del-user" data-id="${esc(u.id)}" data-nome="${esc(u.name)}">Excluir</button>`;
         return `<div class="list-item" style="${u.active === false ? 'opacity:.6;' : ''}">
           <span><b>${esc(u.name)}</b> — ${esc(u.email)} ${tag}</span>
           <span>${acoes}</span></div>`;
@@ -351,10 +351,10 @@
       document.getElementById('cfg-sm').value = ref.senhas.senhaMensal || '';
       document.getElementById('cfg-ss').value = ref.senhas.senhaSemanal || '';
       document.getElementById('list-grupos').innerHTML = ref.grupos.map((v) =>
-        `<div class="list-item"><span>${esc(v)}</span><button class="danger" onclick="delItem('grupos','${esc(v).replace(/'/g,"\\'")}')">×</button></div>`).join('');
+        `<div class="list-item"><span>${esc(v)}</span><button class="danger" data-act="del-item" data-type="grupos" data-value="${esc(v)}">×</button></div>`).join('');
       const proms = ref.promotores.filter((p) => p.toLowerCase().includes(promFilter)).slice(0, 200);
       document.getElementById('list-promotores').innerHTML = proms.map((v) =>
-        `<div class="list-item"><span>${esc(v)}</span><button class="danger" onclick="delItem('promotores','${esc(v).replace(/'/g,"\\'")}')">×</button></div>`).join('')
+        `<div class="list-item"><span>${esc(v)}</span><button class="danger" data-act="del-item" data-type="promotores" data-value="${esc(v)}">×</button></div>`).join('')
         + (ref.promotores.filter((p) => p.toLowerCase().includes(promFilter)).length > 200 ? '<div class="muted">...filtre pra ver mais</div>' : '');
     }
     document.querySelectorAll('[data-add]').forEach((btn) => btn.onclick = async () => {
@@ -375,6 +375,33 @@
       ref.senhas = await api('/api/admin/config', { method: 'PATCH', body: JSON.stringify({ senhaMensal: val('cfg-sm'), senhaSemanal: val('cfg-ss') }) });
       toast('Senhas atualizadas ✓');
     };
+
+    // ---- delegação de eventos (sem handlers inline: evita injeção via dados do usuário) ----
+    document.addEventListener('click', (e) => {
+      const el = e.target.closest('[data-act]');
+      if (!el) return;
+      const d = el.dataset;
+      switch (d.act) {
+        case 'aprovar-pend': return aprovarPend(d.id, d.nome);
+        case 'rejeitar-pend': return rejeitarPend(d.id);
+        case 'tog-ponto': return togPonto(d.id, d.ponto, d.on === '0'); // on='0' → estava desligado, liga
+        case 'zoom': return zoom(d.id);
+        case 'set-validado': return setField(d.id, 'validado', d.val === '1');
+        case 'set-pago': return setField(d.id, 'pago', d.val === '1');
+        case 'del-photo': return delPhoto(d.id);
+        case 'toggle-ban': return toggleBan(d.id, d.nome, d.banido === '1');
+        case 'reset-pass': return resetPass(d.id);
+        case 'del-user': return delUser(d.id, d.nome);
+        case 'del-item': return delItem(d.type, d.value);
+      }
+    });
+    document.addEventListener('change', (e) => {
+      const el = e.target.closest('[data-act]');
+      if (!el) return;
+      const d = el.dataset;
+      if (d.act === 'set-preav') return setField(d.id, 'preAvaliacao', el.value);
+      if (d.act === 'set-obs') return setField(d.id, 'observacao', el.value);
+    });
 
     init().catch((e) => toast(e.message, 'bad'));
   </script>

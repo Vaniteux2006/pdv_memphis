@@ -41,20 +41,25 @@ function txt(v) {
     }
   }
 
+  // senha provisória = PRIMEIRO nome (maiúsculo) + 2026
+  const senhaDe = (name) => name.trim().split(/\s+/)[0].toUpperCase() + '2026';
+
   console.log(`\n${byEmail.size} promotores únicos encontrados.${DRY ? '  (DRY-RUN — nada será criado)' : ''}\n`);
-  let i = 0, criados = 0, jaExistiam = 0, erros = 0;
+  let i = 0, criados = 0, atualizados = 0, erros = 0;
   for (const { name, email } of byEmail.values()) {
-    const senha = name.toUpperCase() + '2026';
-    if (DRY) { if (i++ < 5) console.log(`  ex: ${email}  ->  senha: "${senha}"`); continue; }
+    const senha = senhaDe(name);
+    if (DRY) { if (i++ < 6) console.log(`  ex: ${email}  ->  senha: "${senha}"`); continue; }
     try {
       await db.createUser({ email, name, password: senha, role: 'promotor', mustChangePassword: true });
       criados++;
     } catch (e) {
-      if (/já cadastrado/.test(e.message)) jaExistiam++;
-      else { erros++; console.log('  ERRO', email, '-', e.message); }
+      if (/já cadastrado/.test(e.message)) {
+        await db.setProvisionalPassword(email, senha); // corrige a senha de quem já existe
+        atualizados++;
+      } else { erros++; console.log('  ERRO', email, '-', e.message); }
     }
   }
-  if (DRY) console.log(`\n(amostra acima) — total a criar: ${byEmail.size}`);
-  else console.log(`\nCriados: ${criados} | já existiam: ${jaExistiam} | erros: ${erros}`);
+  if (DRY) console.log(`\n(amostra acima) — total: ${byEmail.size}`);
+  else console.log(`\nCriados: ${criados} | senha atualizada: ${atualizados} | erros: ${erros}`);
   process.exit(0);
 })().catch((e) => { console.error('ERRO:', e.message); process.exit(1); });

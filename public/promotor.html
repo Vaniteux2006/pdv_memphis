@@ -115,14 +115,22 @@
           promStatus.innerHTML = '<span style="color:var(--green)">✓ Promotor encontrado no banco</span>';
         } else {
           const sug = (r.sugestoes && r.sugestoes.length) ? ' Parecidos: ' +
-            r.sugestoes.slice(0, 3).map((s) => `<a href="#" onclick="pickProm('${esc(s).replace(/'/g, "\\'")}');return false">${esc(s)}</a>`).join(', ') : '';
+            r.sugestoes.slice(0, 3).map((s) => `<a href="#" data-act="pick-prom" data-nome="${esc(s)}">${esc(s)}</a>`).join(', ') : '';
           promStatus.innerHTML = `<span style="color:var(--amber)">⚠ Nome não está no banco.${sug}</span> ` +
-            `<a href="#" style="font-weight:600" onclick="addNovo();return false">➕ Cadastrar "${esc(nome)}" como novo</a>`;
+            `<a href="#" style="font-weight:600" data-act="add-novo">➕ Cadastrar "${esc(nome)}" como novo</a>`;
         }
       }, 350);
     });
-    window.pickProm = (s) => { promInput.value = s; promInput.dispatchEvent(new Event('input')); };
-    window.addNovo = async () => {
+    // delegação: os links de sugestão carregam o nome em data-* (sem handler inline com dados do usuário)
+    promStatus.addEventListener('click', (e) => {
+      const el = e.target.closest('[data-act]');
+      if (!el) return;
+      e.preventDefault();
+      if (el.dataset.act === 'pick-prom') pickProm(el.dataset.nome);
+      else if (el.dataset.act === 'add-novo') addNovo();
+    });
+    const pickProm = (s) => { promInput.value = s; promInput.dispatchEvent(new Event('input')); };
+    const addNovo = async () => {
       const nome = promInput.value.trim();
       if (nome.length < 3) return;
       try {
