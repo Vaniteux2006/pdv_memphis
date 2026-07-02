@@ -190,8 +190,10 @@
       const cor = PREAV_COR[s.preAvaliacao] || 'var(--line)';
       const preav = ref.preAvaliacoes.map((p) => `<option ${s.preAvaliacao === p ? 'selected' : ''}>${esc(p)}</option>`).join('');
       const dataExp = s.dataExposicao ? new Date(s.dataExposicao + 'T00:00').toLocaleDateString('pt-BR') : '—';
+      const nImgs = (s.imagens && s.imagens.length) || 1;
+      const imgs = Array.from({ length: nImgs }, (_, k) => `<img src="/api/file/${esc(s.id)}/${k}" loading="lazy" data-act="zoom" data-id="${esc(s.id)}" data-idx="${k}" style="${nImgs > 1 ? 'width:50%' : ''}" />`).join('');
       return `<div class="photo" style="grid-column:span 1;">
-        <img src="/api/file/${esc(s.id)}" loading="lazy" data-act="zoom" data-id="${esc(s.id)}" />
+        <div style="display:flex">${imgs}</div>
         <div class="meta">
           <div class="tags"><b>${esc(s.cliente)}</b> · ${esc(s.regiao)}${s.grupo ? ' · ' + esc(s.grupo) : ''}<br>
             📍 ${esc(s.endereco || '—')}<br>
@@ -234,7 +236,7 @@
       await api('/api/admin/submissions/' + id, { method: 'PATCH', body: JSON.stringify({ pontosExtra: pontos }) });
       loadPhotos();
     }
-    function zoom(id) { document.getElementById('modalimg').src = '/api/file/' + id; document.getElementById('modal').classList.add('show'); }
+    function zoom(id, idx) { document.getElementById('modalimg').src = '/api/file/' + id + '/' + (idx || 0); document.getElementById('modal').classList.add('show'); }
 
     // baixa via fetch pra conseguir mostrar erro num pop-up (em vez de abrir o JSON cru)
     async function downloadFile(url, msgVazio) {
@@ -385,7 +387,7 @@
         case 'aprovar-pend': return aprovarPend(d.id, d.nome);
         case 'rejeitar-pend': return rejeitarPend(d.id);
         case 'tog-ponto': return togPonto(d.id, d.ponto, d.on === '0'); // on='0' → estava desligado, liga
-        case 'zoom': return zoom(d.id);
+        case 'zoom': return zoom(d.id, d.idx);
         case 'set-validado': return setField(d.id, 'validado', d.val === '1');
         case 'set-pago': return setField(d.id, 'pago', d.val === '1');
         case 'del-photo': return delPhoto(d.id);

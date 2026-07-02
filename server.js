@@ -215,28 +215,36 @@ app.post('/api/submissions', requireAuth, ah(async (req, res) => {
     limparOrfas();
     return res.status(400).json({ error: 'Preencha cliente, endereço, data da exposição, região e promotor' });
   }
-  if (validas.length === 0) return res.status(400).json({ error: 'Envie ao menos 1 foto' });
-
-  const jaTem = await db.countByPromotorCliente(promotor, cliente);
-  if (jaTem + validas.length > db.LIMITE_FOTOS) {
+  if (validas.length === 0) return res.status(400).json({ error: 'Envie ao menos 1 imagem' });
+  // 1 FOTO = 1 ou 2 imagens (2 = "antes e depois")
+  if (validas.length > db.IMAGENS_POR_FOTO) {
     limparOrfas();
-    return res.status(400).json({ error: `Limite de ${db.LIMITE_FOTOS} fotos por cliente. Esse cliente já tem ${jaTem}.` });
+    return res.status(400).json({ error: `No máximo ${db.IMAGENS_POR_FOTO} imagens por foto (antes e depois).` });
+  }
+
+  // trava pela DATA DA EXPOSIÇÃO: 1 foto/semana e 4 fotos/mês por promotor
+  const semanaKey = db.semanaISO(dataExposicao), mesKey = db.mesDe(dataExposicao);
+  if (!semanaKey) { limparOrfas(); return res.status(400).json({ error: 'Data de exposição inválida' }); }
+  if ((await db.contarNaSemana(promotor, semanaKey)) >= db.LIMITE_SEMANAL) {
+    limparOrfas();
+    return res.status(400).json({ error: `Você já tem uma foto na semana dessa exposição (limite: ${db.LIMITE_SEMANAL}/semana).` });
+  }
+  if ((await db.contarNoMes(promotor, mesKey)) >= db.LIMITE_MENSAL) {
+    limparOrfas();
+    return res.status(400).json({ error: `Você já atingiu ${db.LIMITE_MENSAL} fotos no mês.` });
   }
 
   const { senhaMensal, senhaSemanal } = await db.getConfig();
   const existePromotor = await db.promotorExiste(promotor);
-  for (const f of validas) {
-    await db.addSubmission({
-      storedFile: f.publicId, resourceType: f.resourceType || 'image',
-      originalName: f.originalName || 'foto.jpg', mimeType: 'image/jpeg', size: f.bytes || 0,
-      uploadedBy: req.user.id, uploadedByEmail: req.user.email,
-      senhaMensal, senhaSemanal,
-      cliente: cliente.trim(), endereco: endereco.trim(), regiao, promotor: promotor.trim(),
-      grupo: (grupo || '').trim(), dataExposicao,
-      promotorNoBanco: existePromotor,
-    });
-  }
-  res.json({ ok: true, count: validas.length, promotorNoBanco: existePromotor });
+  await db.addSubmission({
+    imagens: validas.map((f) => ({ storedFile: f.publicId, resourceType: f.resourceType || 'image', originalName: f.originalName || 'foto.jpg' })),
+    uploadedBy: req.user.id, uploadedByEmail: req.user.email,
+    senhaMensal, senhaSemanal,
+    cliente: cliente.trim(), endereco: endereco.trim(), regiao, promotor: promotor.trim(),
+    grupo: (grupo || '').trim(), dataExposicao,
+    promotorNoBanco: existePromotor,
+  });
+  res.json({ ok: true, count: 1, promotorNoBanco: existePromotor });
 }));
 
 app.get('/api/my/submissions', requireAuth, ah(async (req, res) =>
@@ -250,18 +258,26 @@ app.patch('/api/admin/submissions/:id', requireAuth, requireAdmin, ah(async (req
   catch (e) { res.status(400).json({ error: e.message }); }
 }));
 
-// excluir uma foto de vez (Mongo + Cloudinary)
+// imagens de uma submissão (novo formato = array; fallback p/ registros antigos com storedFile único)
+const imagensDe = (s) => (s.imagens && s.imagens.length
+  ? s.imagens
+  : (s.storedFile ? [{ storedFile: s.storedFile, resourceType: s.resourceType || 'image', originalName: s.originalName }] : []));
+
+// excluir uma foto de vez (Mongo + todas as imagens no Cloudinary)
 app.delete('/api/admin/submissions/:id', requireAuth, requireAdmin, ah(async (req, res) => {
   const s = await db.deleteSubmission(req.params.id);
-  if (s && s.storedFile) await store.remove(s.storedFile, s.resourceType || 'image');
+  if (s) for (const img of imagensDe(s)) await store.remove(img.storedFile, img.resourceType || 'image');
   res.json({ ok: true });
 }));
 
-app.get('/api/file/:id', requireAuth, ah(async (req, res) => {
+app.get('/api/file/:id/:idx?', requireAuth, ah(async (req, res) => {
   const s = await db.getSubmission(req.params.id);
   if (!s) return res.status(404).end();
   if (req.user.role !== 'admin' && s.uploadedBy !== req.user.id) return res.status(403).end();
-  res.redirect(store.urlFor(s.storedFile, s.resourceType || 'image'));
+  const imgs = imagensDe(s);
+  const idx = Math.min(Math.max(parseInt(req.params.idx || '0', 10) || 0, 0), imgs.length - 1);
+  if (!imgs[idx]) return res.status(404).end();
+  res.redirect(store.urlFor(imgs[idx].storedFile, imgs[idx].resourceType || 'image'));
 }));
 
 // ---------- helpers de export ----------
@@ -283,15 +299,20 @@ app.get('/api/admin/download-manifest', requireAuth, requireAdmin, ah(async (req
   const lista = (await db.listSubmissions(onlyNew ? { status: 'novos' } : {})).filter((s) => s.validado !== false);
   const rows = withRefs(lista);
   const used = new Set();
-  const items = rows.map((s) => {
-    const ext = path.extname(s.originalName || '') || '.jpg';
-    // pasta: Região / "REF - Cliente - Promotor" / foto.jpg (com dedupe)
-    let pth = `${sanitize(s.regiao)}/${sanitize(s.pasta)}/foto${ext}`;
-    let i = 1;
-    while (used.has(pth)) pth = `${sanitize(s.regiao)}/${sanitize(s.pasta)}/foto_${i++}${ext}`;
-    used.add(pth);
-    return { id: s.id, url: store.urlFor(s.storedFile, s.resourceType || 'image'), path: pth };
-  });
+  const items = [];
+  for (const s of rows) {
+    const imgs = imagensDe(s);
+    imgs.forEach((img, k) => {
+      const ext = path.extname(img.originalName || '') || '.jpg';
+      // pasta: Região / "REF - Cliente - Promotor" / foto.jpg (com sufixo se "antes e depois")
+      const base = `${sanitize(s.regiao)}/${sanitize(s.pasta)}/foto${imgs.length > 1 ? '_' + (k + 1) : ''}`;
+      let pth = base + ext;
+      let i = 1;
+      while (used.has(pth)) pth = `${base}_${i++}${ext}`;
+      used.add(pth);
+      items.push({ id: s.id, idx: k, url: store.urlFor(img.storedFile, img.resourceType || 'image'), path: pth });
+    });
+  }
   res.json({ items, count: items.length });
 }));
 
@@ -302,65 +323,64 @@ app.post('/api/admin/mark-downloaded', requireAuth, requireAdmin, ah(async (req,
   res.json({ ok: true, count: ids.length });
 }));
 
-// ---------- EXPORT EXCEL: preenche o MODELO oficial (mantém fórmulas/formatação) ----------
-const MODELO_XLSX = path.join(__dirname, 'data', 'modelo-registro.xlsx');
-const ABA_REGIAO = { NE: 'NORDESTE', CN: 'CENTRO NORTE', SP: 'SÃO PAULO', SE: 'SUDESTE', SUL: 'SUL' };
-// cada aba tem layout próprio — mapeia as colunas de VALOR pelo nome do cabeçalho (linha 7)
-function mapColunas(ws) {
-  const norm = (v) => {
-    let s = v && typeof v === 'object' ? (v.text || (v.richText ? v.richText.map((t) => t.text).join('') : '')) : v;
-    return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
-  };
-  const m = {}, row = ws.getRow(7);
-  for (let c = 1; c <= 20; c++) {
-    const h = norm(row.getCell(c).value);
-    if (!h) continue;
-    if (h === 'seq') m.seq = c;
-    else if (h === 'data') m.data = c;
-    else if (h === 'cliente') m.cliente = c;
-    else if (h.startsWith('promotor')) m.promotor = c;
-    else if (h === 'grupo') m.grupo = c;
-    else if (h.includes('avalia')) m.preav = c;
-    else if (h.includes('regi')) m.regiao = c;
-    else if (h === 'obs') m.obs = c;
-  }
-  return m;
-}
-
-// se a região tiver mais linhas que a área formatada do template, clona a linha-modelo (8)
-function clonarLinha(ws, r) {
-  if (ws.getRow(r).getCell(2).formula) return; // já é linha do template
-  const modelo = ws.getRow(8), row = ws.getRow(r);
-  for (let c = 1; c <= 30; c++) {
-    const mc = modelo.getCell(c), nc = row.getCell(c);
-    try { nc.style = JSON.parse(JSON.stringify(mc.style || {})); } catch {}
-    if (mc.formula) nc.value = { formula: mc.formula.replace(/(?<![$0-9])8(?![0-9])/g, r) };
-  }
-}
+// ---------- EXPORT EXCEL: gera a planilha do ZERO no molde oficial (leve, sem template pesado) ----------
+const COLUNAS_MODELO = ['Seq', 'REF', 'Data', 'Contato', 'Nome', 'Cliente', 'Promotor', 'GRUPO',
+  'Pré-Avaliação', '*', 'Região', 'OBS', 'COLAR EM PASTAS', 'Semanas', 'Dias da semana'];
+const LARGURAS = [6, 8, 11, 15, 22, 34, 34, 22, 15, 6, 8, 40, 55, 14, 16];
+const semanaDoMes = (dateStr) => {
+  const d = new Date(String(dateStr) + 'T00:00:00Z');
+  return isNaN(d) ? '' : `${Math.ceil(d.getUTCDate() / 7)}ª Semana`;
+};
 
 app.get('/api/admin/export.xlsx', requireAuth, requireAdmin, ah(async (req, res) => {
   const rows = await db.listSubmissions(req.query);
   const wb = new ExcelJS.Workbook();
-  await wb.xlsx.readFile(MODELO_XLSX);
+  wb.creator = 'Memphis PDV';
+
   for (const reg of db.REGIOES) {
-    const ws = wb.getWorksheet(ABA_REGIAO[reg.sigla]);
-    if (!ws) continue;
-    const m = mapColunas(ws);
-    const regRows = rows.filter((s) => s.regiao === reg.sigla);
-    regRows.forEach((s, i) => {
-      const r = 8 + i;
-      clonarLinha(ws, r);
-      const row = ws.getRow(r);
-      if (m.seq) row.getCell(m.seq).value = i + 1;
-      if (m.data && s.dataExposicao) { const c = row.getCell(m.data); c.value = new Date(s.dataExposicao + 'T00:00'); c.numFmt = 'd-mmm'; }
-      if (m.cliente) row.getCell(m.cliente).value = s.cliente;
-      if (m.promotor) row.getCell(m.promotor).value = s.promotor;
-      if (m.grupo) row.getCell(m.grupo).value = s.grupo || '';
-      if (m.preav) row.getCell(m.preav).value = s.preAvaliacao || '';
-      if (m.regiao) row.getCell(m.regiao).value = s.regiao;
-      if (m.obs) row.getCell(m.obs).value = s.observacao || '';
+    const ws = wb.addWorksheet(`${reg.nome} - ${reg.sigla}`);
+    LARGURAS.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+
+    // bloco-resumo: contagem por pré-avaliação (como no modelo)
+    ws.getCell('G6').value = { formula: 'COUNTA(G8:G100000)' };
+    db.PRE_AVALIACOES.forEach((pa, k) => {
+      const r = 2 + k;
+      ws.getCell(`C${r}`).value = { formula: `COUNTIFS(I:I,D${r})` };
+      ws.getCell(`D${r}`).value = pa;
+      const e = ws.getCell(`E${r}`); e.value = { formula: `IFERROR(C${r}/$G$6,0)` }; e.numFmt = '0%';
     });
+
+    // cabeçalho na linha 7
+    const header = ws.getRow(7);
+    COLUNAS_MODELO.forEach((h, i) => { header.getCell(i + 1).value = h; });
+    header.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    header.eachCell((c) => {
+      c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1C9CC0' } };
+      c.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+    });
+
+    // dados a partir da linha 8 (mesmas fórmulas do modelo)
+    rows.filter((s) => s.regiao === reg.sigla).forEach((s, i) => {
+      const r = 8 + i, row = ws.getRow(r);
+      row.getCell(1).value = i + 1;
+      row.getCell(2).value = { formula: `K${r}&A${r}` };                                     // REF
+      if (s.dataExposicao) { const c = row.getCell(3); c.value = new Date(s.dataExposicao + 'T00:00'); c.numFmt = 'd-mmm'; }
+      row.getCell(6).value = s.cliente;
+      row.getCell(7).value = s.promotor;
+      row.getCell(8).value = s.grupo || '';
+      row.getCell(9).value = s.preAvaliacao || '';
+      row.getCell(10).value = { formula: `COUNTIFS($G$8:G${r},G${r})` };                     // *
+      row.getCell(11).value = s.regiao;
+      row.getCell(12).value = s.observacao || '';
+      row.getCell(13).value = { formula: `B${r}&" - "&PROPER(LOWER(F${r}&" - "&G${r}))` };    // COLAR EM PASTAS
+      row.getCell(14).value = semanaDoMes(s.dataExposicao);
+      row.getCell(15).value = { formula: `IF(C${r}="","",PROPER(TEXT(C${r},"[$-416]dddd")))` }; // Dias da semana
+    });
+
+    ws.autoFilter = { from: 'A7', to: { row: 7, column: COLUNAS_MODELO.length } };
+    ws.views = [{ state: 'frozen', ySplit: 7 }];
   }
+
   wb.calcProperties = wb.calcProperties || {};
   wb.calcProperties.fullCalcOnLoad = true;
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -371,7 +391,7 @@ app.get('/api/admin/export.xlsx', requireAuth, requireAdmin, ah(async (req, res)
 
 app.post('/api/admin/purge', requireAuth, requireAdmin, ah(async (req, res) => {
   const removed = await db.purgeDownloaded();
-  for (const s of removed) await store.remove(s.storedFile, s.resourceType || 'image');
+  for (const s of removed) for (const img of imagensDe(s)) await store.remove(img.storedFile, img.resourceType || 'image');
   res.json({ removed: removed.length });
 }));
 
@@ -383,6 +403,10 @@ app.use((err, req, res, next) => {
   if (res.headersSent) return next(err);
   res.status(err.status || 500).json({ error: err.message || 'Erro interno' });
 });
+
+// robustez: uma rejeição/exceção solta NÃO deve derrubar o servidor inteiro (só loga)
+process.on('unhandledRejection', (e) => console.error('unhandledRejection:', (e && e.message) || e));
+process.on('uncaughtException', (e) => console.error('uncaughtException:', (e && e.message) || e));
 
 // Rodando direto (Discloud/local): conecta no Mongo e sobe o servidor HTTP em 0.0.0.0:8080.
 // Na Vercel: server.js é importado como função (module.exports = app) e o

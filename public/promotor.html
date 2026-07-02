@@ -50,7 +50,7 @@
         <input id="grupo" list="grupos-dl" autocomplete="off" placeholder="grupo do promotor (ex: PDV NE)" />
         <datalist id="grupos-dl"></datalist>
 
-        <label>Fotos (máximo 2 por cliente)</label>
+        <label>Foto (1 imagem — ou 2 se for "antes e depois")</label>
         <input id="fotos" type="file" accept="image/*" capture="environment" multiple required />
         <div class="muted" id="fileinfo" style="margin-top:6px;"></div>
 
@@ -80,7 +80,7 @@
       if (me.mustChangePassword) { location.href = '/trocar-senha.html'; return; }
       document.getElementById('who').textContent = me.name;
       ref = await api('/api/reference');
-      limite = ref.limiteFotos;
+      limite = ref.imagensPorFoto || 2;
       fillDL('clientes-dl', ref.clientes);
       fillDL('grupos-dl', ref.grupos);
       document.getElementById('regiao').innerHTML =
@@ -144,12 +144,12 @@
     const fotos = document.getElementById('fotos');
     fotos.addEventListener('change', () => {
       if (fotos.files.length > limite) {
-        toast(`Máximo ${limite} fotos por cliente`, 'bad');
+        toast(`Máximo ${limite} imagens por foto (2 = antes e depois)`, 'bad');
         fotos.value = '';
         document.getElementById('fileinfo').textContent = '';
         return;
       }
-      document.getElementById('fileinfo').textContent = fotos.files.length ? `${fotos.files.length} foto(s)` : '';
+      document.getElementById('fileinfo').textContent = fotos.files.length ? `${fotos.files.length} imagem(ns)` : '';
     });
 
     async function compress(file) {
@@ -176,19 +176,19 @@
         const fotosIds = [];
         let i = 0;
         for (const file of fotos.files) {
-          btn.textContent = `Enviando foto ${++i}/${fotos.files.length}...`;
+          btn.textContent = `Enviando imagem ${++i}/${fotos.files.length}...`;
           fotosIds.push(await cloudinaryUpload(await compress(file), 'fotos'));
         }
         // 2) registra os metadados no nosso servidor
         btn.textContent = 'Finalizando...';
-        const data = await api('/api/submissions', {
+        await api('/api/submissions', {
           method: 'POST',
           body: JSON.stringify({
             cliente: val('cliente'), endereco: val('endereco'), dataExposicao: val('dataExposicao'),
             regiao: val('regiao'), grupo: val('grupo'), promotor: val('promotor'), fotos: fotosIds,
           }),
         });
-        toast(`${data.count} foto(s) enviada(s)!`, 'ok');
+        toast('Foto enviada!', 'ok');
         e.target.reset(); promStatus.textContent = ''; promOk = false; promCadastrado = false;
         document.getElementById('dataExposicao').value = new Date().toISOString().slice(0, 10);
         document.getElementById('fileinfo').textContent = '';
@@ -214,8 +214,10 @@
         : s.validado === false ? '<span class="pill" style="color:var(--red)">Recusada</span>'
         : '<span class="pill off">Em análise</span>';
       const pago = s.pago ? ' <span class="pill on">💰 Pago</span>' : '';
+      const n = (s.imagens && s.imagens.length) || 1;
+      const imgs = Array.from({ length: n }, (_, k) => `<img src="/api/file/${s.id}/${k}" loading="lazy" onclick="zoom('${s.id}',${k})" style="${n > 1 ? 'width:50%' : ''}" />`).join('');
       return `<div class="photo">
-        <img src="/api/file/${s.id}" loading="lazy" onclick="zoom('${s.id}')" />
+        <div style="display:flex">${imgs}</div>
         <div class="meta">
           <div class="tags"><b>${esc(s.cliente)}</b> · ${esc(s.regiao)}${s.grupo ? ' · ' + esc(s.grupo) : ''}<br>
             ${esc(s.endereco || '')}<br>
@@ -226,7 +228,7 @@
         </div>
       </div>`;
     }
-    function zoom(id) { document.getElementById('modalimg').src = '/api/file/' + id; document.getElementById('modal').classList.add('show'); }
+    function zoom(id, idx) { document.getElementById('modalimg').src = '/api/file/' + id + '/' + (idx || 0); document.getElementById('modal').classList.add('show'); }
 
     init().catch((e) => toast(e.message, 'bad'));
   </script>

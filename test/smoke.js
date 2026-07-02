@@ -82,8 +82,12 @@ async function uploadCloud(cookie, tipo, file, filename, ct) {
     regiao: 'NE', grupo: 'CALMON', promotor: ref.promotores[0], fotos: [foto1],
   } });
   ck('registra metadados', up.status === 200 && J(up.body).count === 1, J(up.body).error || '');
+  // trava: 1 foto por semana por promotor (mesma semana da exposição)
+  const dupImg = await uploadCloud(pc, 'fotos', jpeg, 'dup.jpg', 'image/jpeg');
+  const dup = await req('POST', '/api/submissions', { cookie: pc, body: { cliente: 'OUTRA', endereco: 'X', dataExposicao: '2026-06-21', regiao: 'NE', grupo: '', promotor: ref.promotores[0], fotos: [dupImg] } });
+  ck('trava 1 foto/semana por promotor', dup.status === 400 && /semana/i.test(J(dup.body).error), J(dup.body).error);
   const mine = J((await req('GET', '/api/my/submissions', { cookie: pc })).body)[0];
-  ck('storedFile no Cloudinary', /memphis-pdv\/fotos\//.test(mine.storedFile || ''));
+  ck('foto guarda a imagem no Cloudinary', /memphis-pdv\/fotos\//.test((mine.imagens && mine.imagens[0] && mine.imagens[0].storedFile) || ''));
   const id = mine.id;
 
   const fileR = await req('GET', '/api/file/' + id, { cookie: pc });
@@ -147,6 +151,17 @@ async function uploadCloud(cookie, tipo, file, filename, ct) {
   // excluir a foto de vez (testa exclusão individual + limpa)
   await req('DELETE', '/api/admin/submissions/' + subR.id, { cookie: ac });
   ck('excluir foto remove do banco', J((await req('GET', '/api/admin/submissions', { cookie: ac })).body).length === 0);
+
+  // ---- foto com 2 imagens ("antes e depois") = 1 foto, 2 arquivos no ZIP ----
+  const im1 = await uploadCloud(pc, 'fotos', jpeg, 'a1.jpg', 'image/jpeg');
+  const im2 = await uploadCloud(pc, 'fotos', jpeg, 'a2.jpg', 'image/jpeg');
+  const dois = await req('POST', '/api/submissions', { cookie: pc, body: { cliente: 'ANTES E DEPOIS', endereco: 'X', dataExposicao: '2026-07-05', regiao: 'SE', grupo: '', promotor: 'FULANO 2IMG', fotos: [im1, im2] } });
+  ck('2 imagens = 1 foto (count 1)', dois.status === 200 && J(dois.body).count === 1, J(dois.body).error || '');
+  const subAD = J((await req('GET', '/api/admin/submissions?status=novos', { cookie: ac })).body)[0];
+  await req('PATCH', '/api/admin/submissions/' + subAD.id, { cookie: ac, body: { validado: true } });
+  const manAD = J((await req('GET', '/api/admin/download-manifest?onlyNew=0', { cookie: ac })).body);
+  ck('2 imagens = 2 arquivos no ZIP', manAD.count === 2 && manAD.items.filter((i) => i.id === subAD.id).length === 2, 'count=' + manAD.count);
+  await req('DELETE', '/api/admin/submissions/' + subAD.id, { cookie: ac });
 
   // ---- troca de senha obrigatória no 1º login ----
   await req('POST', '/api/admin/users', { cookie: ac, body: { name: 'Novato', email: 'novato@local', password: 'prov123', role: 'promotor', mustChangePassword: true } });
