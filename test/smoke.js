@@ -113,6 +113,22 @@ async function uploadCloud(cookie, tipo, file, filename, ct) {
   ck('novo admin loga e acessa o painel', !!ac2 && (await req('GET', '/api/admin/pendentes', { cookie: ac2 })).status === 200);
   ck('lista de contas inclui admins', J((await req('GET', '/api/admin/users', { cookie: ac })).body).some((u) => u.role === 'admin'));
 
+  // ---- perfil (admin edita nome/email/grupo/região/telefone) ----
+  const ju = J((await req('GET', '/api/admin/users', { cookie: ac })).body).find((u) => u.email === 'joao@local');
+  const up1 = await req('PATCH', '/api/admin/users/' + ju.id, { cookie: ac, body: { grupo: 'CALMON', regiao: 'NE', telefone: '(81) 99999-0000' } });
+  const up1b = J(up1.body);
+  ck('admin edita perfil (grupo/região/telefone)', up1.status === 200 && up1b.grupo === 'CALMON' && up1b.regiao === 'NE' && up1b.telefone === '(81) 99999-0000', up1b.error || '');
+  const meP = J((await req('GET', '/api/me', { cookie: pc })).body);
+  ck('promotor vê o próprio perfil no /api/me', meP.grupo === 'CALMON' && meP.regiao === 'NE');
+  ck('região inválida é recusada', (await req('PATCH', '/api/admin/users/' + ju.id, { cookie: ac, body: { regiao: 'XX' } })).status === 400);
+  ck('email duplicado é recusado', (await req('PATCH', '/api/admin/users/' + ju.id, { cookie: ac, body: { email: adminEmail } })).status === 400);
+  const up2 = await req('PATCH', '/api/admin/users/' + ju.id, { cookie: ac, body: { email: 'joao.novo@local', name: 'João Editado' } });
+  ck('admin troca email e nome', up2.status === 200 && J(up2.body).email === 'joao.novo@local' && J(up2.body).name === 'João Editado', J(up2.body).error || '');
+  ck('promotor loga com o email novo', !!(await req('POST', '/api/login', { body: { email: 'joao.novo@local', password: 'joao123' } })).cookie);
+  ck('email antigo não loga mais', (await req('POST', '/api/login', { body: { email: 'joao@local', password: 'joao123' } })).status === 401);
+  await req('PATCH', '/api/admin/users/' + ju.id, { cookie: ac, body: { email: 'joao@local', name: 'João Ninguém' } }); // restaura pros testes seguintes
+  ck('promotor comum não edita perfil (403)', (await req('PATCH', '/api/admin/users/' + ju.id, { cookie: pc, body: { name: 'hack' } })).status === 403);
+
   // ---- marcar pago ----
   await req('PATCH', '/api/admin/submissions/' + id, { cookie: ac, body: { pago: true } });
   ck('admin marca pago, promotor vê', J((await req('GET', '/api/my/submissions', { cookie: pc })).body)[0].pago === true);

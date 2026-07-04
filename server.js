@@ -1,9 +1,11 @@
 require('dotenv').config();
 const path = require('path');
+const zlib = require('zlib');
 const express = require('express');
 const cookieParser = require('cookie-parser');
 const jwt = require('jsonwebtoken');
 const helmet = require('helmet');
+const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 const ExcelJS = require('exceljs');
 const db = require('./lib/db');
@@ -42,6 +44,33 @@ app.use(helmet({
   },
 }));
 
+// ---- portão de concorrência: protege a memória em rajadas ----
+// Processa no máximo GATE_MAX requisições de API ao mesmo tempo; as demais esperam numa
+// fila leve (quase sem custo de memória). Acima do teto da fila, responde 503 na hora —
+// degradar com aviso é melhor que estourar a RAM e derrubar o servidor pra todo mundo.
+const GATE_MAX = 300, GATE_FILA_MAX = 8000;
+let gateAtivos = 0; const gateFila = [];
+function gateLibera() {
+  for (;;) {
+    const prox = gateFila.shift();
+    if (!prox) { gateAtivos--; return; }
+    if (prox.res.destroyed) continue; // cliente desistiu enquanto esperava — pula sem gastar a vaga
+    prox.entra(); return;
+  }
+}
+app.use('/api', (req, res, next) => {
+  const entra = () => {
+    let feito = false;
+    const fim = () => { if (!feito) { feito = true; gateLibera(); } };
+    res.on('finish', fim); res.on('close', fim);
+    next();
+  };
+  if (gateAtivos < GATE_MAX) { gateAtivos++; entra(); }
+  else if (gateFila.length < GATE_FILA_MAX) gateFila.push({ entra, res });
+  else res.status(503).json({ error: 'Servidor ocupado. Tente novamente em instantes.' });
+});
+
+app.use(compression()); // gzip: o JSON da referência (2 mil promotores) cai de ~60KB pra ~10KB
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(cookieParser());
@@ -98,7 +127,7 @@ function requireAdmin(req, res, next) {
 app.post('/api/login', loginLimiter, ah(async (req, res) => {
   const { email, password } = req.body;
   const u = await db.findUserByEmail(email || '');
-  if (!u || !u.active || !db.checkPassword(u, password || ''))
+  if (!u || !u.active || !(await db.checkPassword(u, password || '')))
     return res.status(401).json({ error: 'E-mail ou senha incorretos' });
   setAuthCookie(res, u);
   res.json({ role: u.role, name: u.name, mustChangePassword: !!u.mustChangePassword });
@@ -132,10 +161,31 @@ app.post('/api/reset-password', resetLimiter, ah(async (req, res) => {
   catch (e) { res.status(400).json({ error: e.message }); }
 }));
 app.get('/api/me', requireAuth, (req, res) =>
-  res.json({ id: req.user.id, email: req.user.email, name: req.user.name, role: req.user.role, mustChangePassword: !!req.user.mustChangePassword }));
+  res.json({
+    id: req.user.id, email: req.user.email, name: req.user.name, role: req.user.role,
+    mustChangePassword: !!req.user.mustChangePassword,
+    grupo: req.user.grupo || '', regiao: req.user.regiao || '', telefone: req.user.telefone || '',
+  }));
 
 // ---------- referência ----------
-app.get('/api/reference', requireAuth, ah(async (req, res) => res.json(await db.reference())));
+// referência pré-serializada e pré-gzipada: é o maior payload do app (banco de promotores
+// inteiro) e todo usuário pede ao abrir — serializar por requisição estoura a memória em rajada.
+// O buffer é UM só, compartilhado por todas as respostas, e renova quando o cache do db renova.
+let refSer = { src: null, plain: null, gz: null };
+app.get('/api/reference', requireAuth, ah(async (req, res) => {
+  const ref = await db.reference();
+  if (refSer.src !== ref) {
+    const plain = Buffer.from(JSON.stringify(ref));
+    refSer = { src: ref, plain, gz: zlib.gzipSync(plain) };
+  }
+  res.set('Content-Type', 'application/json; charset=utf-8');
+  res.set('Vary', 'Accept-Encoding');
+  if (/\bgzip\b/.test(req.headers['accept-encoding'] || '')) {
+    res.set('Content-Encoding', 'gzip');
+    return res.end(refSer.gz);
+  }
+  res.end(refSer.plain);
+}));
 
 // checar nome do promotor contra o banco da empresa
 app.get('/api/check-promotor', requireAuth, ah(async (req, res) => {
@@ -172,9 +222,16 @@ app.delete('/api/admin/pendentes/:id', requireAuth, requireAdmin, ah(async (req,
 app.get('/api/admin/users', requireAuth, requireAdmin, ah(async (req, res) => res.json(await db.listUsers())));
 app.post('/api/admin/users', requireAuth, requireAdmin, ah(async (req, res) => {
   try {
-    const { email, name, password, role, mustChangePassword } = req.body;
+    const { email, name, password, role, mustChangePassword, grupo, regiao, telefone } = req.body;
     if (!email || !name || !password) return res.status(400).json({ error: 'Preencha email, nome e senha' });
-    res.json(await db.createUser({ email, name, password, role, mustChangePassword }));
+    res.json(await db.createUser({ email, name, password, role, mustChangePassword, grupo, regiao, telefone }));
+  } catch (e) { res.status(400).json({ error: e.message }); }
+}));
+// admin edita o perfil da conta (nome, email, grupo, região, telefone)
+app.patch('/api/admin/users/:id', requireAuth, requireAdmin, ah(async (req, res) => {
+  try {
+    const { name, email, grupo, regiao, telefone } = req.body;
+    res.json(await db.updateUser(req.params.id, { name, email, grupo, regiao, telefone }));
   } catch (e) { res.status(400).json({ error: e.message }); }
 }));
 app.post('/api/admin/users/:id/password', requireAuth, requireAdmin, ah(async (req, res) => {

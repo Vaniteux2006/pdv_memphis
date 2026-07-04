@@ -91,11 +91,22 @@
         'Hoje: ' + new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
       document.getElementById('sm-now').textContent = ref.senhas.senhaMensal || '—';
       document.getElementById('ss-now').textContent = ref.senhas.senhaSemanal || '—';
+      prefill();
       loadMine();
       setInterval(loadMine, 20000); // atualiza status/pré-avaliação a cada 20s
     }
     const fillDL = (id, arr) =>
       (document.getElementById(id).innerHTML = arr.map((v) => `<option value="${esc(v)}">`).join(''));
+
+    // pré-preenche com o perfil da conta (nome, região e grupo definidos pelo admin)
+    function prefill() {
+      if (me.role === 'promotor' && me.name && !promInput.value) {
+        promInput.value = me.name;
+        promInput.dispatchEvent(new Event('input')); // dispara a checagem contra o banco
+      }
+      if (me.regiao) document.getElementById('regiao').value = me.regiao;
+      if (me.grupo && !val('grupo')) document.getElementById('grupo').value = me.grupo;
+    }
 
     // ---- checagem do promotor contra o banco da empresa (com debounce) ----
     const promInput = document.getElementById('promotor');
@@ -192,6 +203,7 @@
         e.target.reset(); promStatus.textContent = ''; promOk = false; promCadastrado = false;
         document.getElementById('dataExposicao').value = new Date().toISOString().slice(0, 10);
         document.getElementById('fileinfo').textContent = '';
+        prefill();
         loadMine();
       } catch (ex) { toast(ex.message, 'bad'); }
       finally { btn.disabled = false; btn.textContent = 'Enviar'; }

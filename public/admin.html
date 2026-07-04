@@ -77,10 +77,20 @@
             <select id="u-role"><option value="promotor">Promotor</option><option value="admin">Admin (acesso ao painel)</option></select>
           </div>
         </div>
+        <div class="row" style="margin-top:8px;">
+          <div><label>Telefone</label><input id="u-tel" placeholder="(00) 00000-0000" /></div>
+          <div><label>Grupo</label><input id="u-grupo" list="grupos-dl-adm" placeholder="ex: CALMON" /></div>
+          <div><label>Região</label><select id="u-regiao"><option value="">—</option></select></div>
+        </div>
+        <datalist id="grupos-dl-adm"></datalist>
         <button id="u-create" style="margin-top:12px;">Criar conta</button>
         <button class="secondary" id="u-genpass" style="margin-top:12px;">Gerar senha</button>
       </div>
-      <div class="card"><h2>Contas (<span id="u-count">0</span>)</h2><div id="u-list"></div></div>
+      <div class="card">
+        <h2>Contas (<span id="u-count">0</span>)</h2>
+        <input id="u-search" placeholder="🔎 filtrar por nome, email, grupo, região..." style="margin-bottom:8px;" />
+        <div id="u-list"></div>
+      </div>
     </section>
 
     <!-- LISTAS -->
@@ -124,6 +134,9 @@
       document.getElementById('f-grupo').innerHTML = '<option value="">Todos grupos</option>' +
         ref.grupos.map((g) => `<option>${esc(g)}</option>`).join('');
       document.getElementById('prom-total').textContent = ref.promotores.length;
+      document.getElementById('grupos-dl-adm').innerHTML = ref.grupos.map((g) => `<option value="${esc(g)}">`).join('');
+      document.getElementById('u-regiao').innerHTML = '<option value="">—</option>' +
+        ref.regioes.map((r) => `<option value="${r.sigla}">${esc(r.nome)} (${r.sigla})</option>`).join('');
       loadPhotos();
       loadPendentes();
     }
@@ -298,23 +311,71 @@
     };
 
     // ---- contas ----
+    let usersCache = [], editingId = null, userFilter = '';
+    document.getElementById('u-search').addEventListener('input', (e) => {
+      userFilter = e.target.value.toLowerCase(); editingId = null; renderUsers();
+    });
     async function loadUsers() {
-      const users = await api('/api/admin/users');
-      document.getElementById('u-count').textContent = users.length;
+      usersCache = await api('/api/admin/users');
+      renderUsers();
+    }
+    function nomeRegiao(sigla) {
+      const r = ref.regioes.find((x) => x.sigla === sigla);
+      return r ? `${r.nome} (${r.sigla})` : sigla;
+    }
+    function renderUsers() {
+      const users = usersCache.filter((u) =>
+        [u.name, u.email, u.grupo, u.regiao, u.telefone].join(' ').toLowerCase().includes(userFilter));
+      document.getElementById('u-count').textContent = `${users.length}${userFilter ? ' de ' + usersCache.length : ''}`;
       document.getElementById('u-list').innerHTML = users.map((u) => {
+        if (u.id === editingId) return editPanel(u);
         const ehAdmin = u.role === 'admin';
         const tag = ehAdmin ? '<span class="pill" style="background:var(--teal-soft);color:var(--teal);border-color:transparent">admin</span>'
           : (u.active === false ? '<span class="pill" style="color:var(--red)">banido</span>' : '');
+        const perfil = [u.regiao && nomeRegiao(u.regiao), u.grupo, u.telefone].filter(Boolean).join(' · ');
         // admin não pode ser banido nem excluído (trava de segurança)
         const acoes = ehAdmin
-          ? `<button class="secondary" data-act="reset-pass" data-id="${esc(u.id)}">Nova senha</button>`
-          : `<button class="${u.active === false ? '' : 'danger'}" data-act="toggle-ban" data-id="${esc(u.id)}" data-nome="${esc(u.name)}" data-banido="${u.active === false ? 1 : 0}">${u.active === false ? 'Desbanir' : '🚫 Banir'}</button>
+          ? `<button class="secondary" data-act="edit-user" data-id="${esc(u.id)}">✏️ Editar</button>
+             <button class="secondary" data-act="reset-pass" data-id="${esc(u.id)}">Nova senha</button>`
+          : `<button class="secondary" data-act="edit-user" data-id="${esc(u.id)}">✏️ Editar</button>
+             <button class="${u.active === false ? '' : 'danger'}" data-act="toggle-ban" data-id="${esc(u.id)}" data-nome="${esc(u.name)}" data-banido="${u.active === false ? 1 : 0}">${u.active === false ? 'Desbanir' : '🚫 Banir'}</button>
              <button class="secondary" data-act="reset-pass" data-id="${esc(u.id)}">Nova senha</button>
              <button class="ghost" data-act="del-user" data-id="${esc(u.id)}" data-nome="${esc(u.name)}">Excluir</button>`;
         return `<div class="list-item" style="${u.active === false ? 'opacity:.6;' : ''}">
-          <span><b>${esc(u.name)}</b> — ${esc(u.email)} ${tag}</span>
+          <span><b>${esc(u.name)}</b> — ${esc(u.email)} ${tag}${perfil ? `<br><span class="muted" style="font-size:12px;">${esc(perfil)}</span>` : ''}</span>
           <span>${acoes}</span></div>`;
       }).join('') || '<div class="muted">Nenhuma conta.</div>';
+    }
+    function editPanel(u) {
+      const regs = '<option value="">—</option>' + ref.regioes.map((r) =>
+        `<option value="${r.sigla}" ${u.regiao === r.sigla ? 'selected' : ''}>${esc(r.nome)} (${r.sigla})</option>`).join('');
+      return `<div class="list-item" style="display:block;background:var(--panel2);border:1px solid var(--teal);border-radius:8px;padding:12px;">
+        <b>✏️ Editando perfil</b>
+        <div class="row" style="margin-top:8px;">
+          <div><label>Nome</label><input id="e-name" value="${esc(u.name)}" /></div>
+          <div><label>E-mail</label><input id="e-email" type="email" value="${esc(u.email)}" /></div>
+        </div>
+        <div class="row" style="margin-top:8px;">
+          <div><label>Telefone</label><input id="e-tel" value="${esc(u.telefone || '')}" placeholder="(00) 00000-0000" /></div>
+          <div><label>Grupo</label><input id="e-grupo" list="grupos-dl-adm" value="${esc(u.grupo || '')}" /></div>
+          <div><label>Região</label><select id="e-regiao">${regs}</select></div>
+        </div>
+        <div style="margin-top:10px;">
+          <button data-act="save-user" data-id="${esc(u.id)}">💾 Salvar</button>
+          <button class="ghost" data-act="cancel-edit">Cancelar</button>
+          <button class="secondary" data-act="reset-pass" data-id="${esc(u.id)}" style="float:right;">🔑 Nova senha</button>
+        </div>
+      </div>`;
+    }
+    function editUser(id) { editingId = id; renderUsers(); }
+    async function saveUser(id) {
+      try {
+        await api('/api/admin/users/' + id, {
+          method: 'PATCH',
+          body: JSON.stringify({ name: val('e-name'), email: val('e-email'), telefone: val('e-tel'), grupo: val('e-grupo'), regiao: val('e-regiao') }),
+        });
+        toast('Perfil salvo ✓'); editingId = null; loadUsers();
+      } catch (e) { toast(e.message, 'bad'); }
     }
     async function toggleBan(id, name, banido) {
       const ativar = banido; // se está banido, a ação é ativar
@@ -328,10 +389,11 @@
     };
     document.getElementById('u-create').onclick = async () => {
       try {
-        const body = { name: val('u-name'), email: val('u-email'), password: val('u-pass'), role: val('u-role') };
+        const body = { name: val('u-name'), email: val('u-email'), password: val('u-pass'), role: val('u-role'),
+          telefone: val('u-tel'), grupo: val('u-grupo'), regiao: val('u-regiao') };
         await api('/api/admin/users', { method: 'POST', body: JSON.stringify(body) });
         toast(`Conta de ${body.role} criada. Senha: ${body.password}`);
-        ['u-name', 'u-email', 'u-pass'].forEach((i) => (document.getElementById(i).value = ''));
+        ['u-name', 'u-email', 'u-pass', 'u-tel', 'u-grupo', 'u-regiao'].forEach((i) => (document.getElementById(i).value = ''));
         loadUsers();
       } catch (e) { toast(e.message, 'bad'); }
     };
@@ -392,6 +454,9 @@
         case 'set-pago': return setField(d.id, 'pago', d.val === '1');
         case 'del-photo': return delPhoto(d.id);
         case 'toggle-ban': return toggleBan(d.id, d.nome, d.banido === '1');
+        case 'edit-user': return editUser(d.id);
+        case 'cancel-edit': { editingId = null; return renderUsers(); }
+        case 'save-user': return saveUser(d.id);
         case 'reset-pass': return resetPass(d.id);
         case 'del-user': return delUser(d.id, d.nome);
         case 'del-item': return delItem(d.type, d.value);
