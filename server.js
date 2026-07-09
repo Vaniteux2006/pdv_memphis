@@ -122,6 +122,12 @@ function requireAdmin(req, res, next) {
   if (req.user.role !== 'admin') return res.status(403).json({ error: 'Acesso restrito' });
   next();
 }
+// permissão granular de admin: '*' (crachá/acesso total) passa em tudo
+const requirePerm = (perm) => (req, res, next) => {
+  if (req.user.role !== 'admin' || !db.temPerm(req.user, perm))
+    return res.status(403).json({ error: 'Você não tem permissão pra isso. Peça a um admin com acesso total (ou valide um crachá).' });
+  next();
+};
 
 // ---------- auth ----------
 app.post('/api/login', loginLimiter, ah(async (req, res) => {
@@ -165,6 +171,8 @@ app.get('/api/me', requireAuth, (req, res) =>
     id: req.user.id, email: req.user.email, name: req.user.name, role: req.user.role,
     mustChangePassword: !!req.user.mustChangePassword,
     grupo: req.user.grupo || '', regiao: req.user.regiao || '', telefone: req.user.telefone || '',
+    setor: req.user.setor || '', matricula: req.user.matricula ?? null,
+    permissions: db.permissoesDe(req.user),
   }));
 
 // ---------- referência ----------
@@ -202,57 +210,71 @@ app.get('/api/upload-signature', requireAuth, ah(async (req, res) => {
 }));
 
 // admin define as senhas atuais (mensal/semanal)
-app.patch('/api/admin/config', requireAuth, requireAdmin, ah(async (req, res) => res.json(await db.setConfig(req.body))));
+app.patch('/api/admin/config', requireAuth, requirePerm('listas'), ah(async (req, res) => res.json(await db.setConfig(req.body))));
 
 // promotor cadastra um nome novo (não está no banco) -> fila de aprovação
 app.post('/api/promotor-pendente', requireAuth, ah(async (req, res) => {
   try { res.json(await db.addPendente(req.body.nome, req.user.email)); }
   catch (e) { res.status(400).json({ error: e.message }); }
 }));
-app.get('/api/admin/pendentes', requireAuth, requireAdmin, ah(async (req, res) => res.json(await db.listPendentes())));
-app.post('/api/admin/pendentes/:id/aprovar', requireAuth, requireAdmin, ah(async (req, res) => {
+app.get('/api/admin/pendentes', requireAuth, requirePerm('aprovar'), ah(async (req, res) => res.json(await db.listPendentes())));
+app.post('/api/admin/pendentes/:id/aprovar', requireAuth, requirePerm('aprovar'), ah(async (req, res) => {
   try { res.json({ nome: await db.aprovarPendente(req.params.id) }); }
   catch (e) { res.status(400).json({ error: e.message }); }
 }));
-app.delete('/api/admin/pendentes/:id', requireAuth, requireAdmin, ah(async (req, res) => {
+app.delete('/api/admin/pendentes/:id', requireAuth, requirePerm('aprovar'), ah(async (req, res) => {
   await db.rejeitarPendente(req.params.id); res.json({ ok: true });
 }));
 
 // ---------- admin: contas de promotor ----------
-app.get('/api/admin/users', requireAuth, requireAdmin, ah(async (req, res) => res.json(await db.listUsers())));
-app.post('/api/admin/users', requireAuth, requireAdmin, ah(async (req, res) => {
+app.get('/api/admin/users', requireAuth, requirePerm('contas'), ah(async (req, res) => res.json(await db.listUsers())));
+app.post('/api/admin/users', requireAuth, requirePerm('contas'), ah(async (req, res) => {
   try {
-    const { email, name, password, role, mustChangePassword, grupo, regiao, telefone } = req.body;
+    const { email, name, password, role, mustChangePassword, grupo, regiao, telefone, setor, matricula, permissions } = req.body;
     if (!email || !name || !password) return res.status(400).json({ error: 'Preencha email, nome e senha' });
-    res.json(await db.createUser({ email, name, password, role, mustChangePassword, grupo, regiao, telefone }));
+    // só quem tem acesso total consegue já criar um admin COM permissões; senão nasce sem nenhuma
+    const perms = db.temPerm(req.user, '*') ? permissions : [];
+    res.json(await db.createUser({ email, name, password, role, mustChangePassword, grupo, regiao, telefone, setor, matricula, permissions: perms }));
   } catch (e) { res.status(400).json({ error: e.message }); }
 }));
-// admin edita o perfil da conta (nome, email, grupo, região, telefone)
-app.patch('/api/admin/users/:id', requireAuth, requireAdmin, ah(async (req, res) => {
+// admin edita o perfil da conta (nome, email, grupo, região, telefone, setor, matrícula)
+app.patch('/api/admin/users/:id', requireAuth, requirePerm('contas'), ah(async (req, res) => {
   try {
-    const { name, email, grupo, regiao, telefone } = req.body;
-    res.json(await db.updateUser(req.params.id, { name, email, grupo, regiao, telefone }));
+    const { name, email, grupo, regiao, telefone, setor, matricula } = req.body;
+    res.json(await db.updateUser(req.params.id, { name, email, grupo, regiao, telefone, setor, matricula }));
   } catch (e) { res.status(400).json({ error: e.message }); }
 }));
-app.post('/api/admin/users/:id/password', requireAuth, requireAdmin, ah(async (req, res) => {
+// configurar as permissões de um admin — só acesso total
+app.patch('/api/admin/users/:id/permissions', requireAuth, requirePerm('*'), ah(async (req, res) => {
+  try { res.json(await db.setPermissions(req.params.id, req.body.permissions)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+}));
+// crachá de acesso total: gerar (só acesso total) e validar (qualquer admin)
+app.post('/api/admin/cracha', requireAuth, requirePerm('*'), ah(async (req, res) =>
+  res.json({ codigo: await db.gerarCracha() })));
+app.post('/api/cracha/validar', requireAuth, ah(async (req, res) => {
+  try { await db.validarCracha(req.user.id, req.body.codigo); res.json({ ok: true }); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+}));
+app.post('/api/admin/users/:id/password', requireAuth, requirePerm('contas'), ah(async (req, res) => {
   try { await db.setPassword(req.params.id, req.body.password); res.json({ ok: true }); }
   catch (e) { res.status(400).json({ error: e.message }); }
 }));
-app.post('/api/admin/users/:id/active', requireAuth, requireAdmin, ah(async (req, res) => {
+app.post('/api/admin/users/:id/active', requireAuth, requirePerm('contas'), ah(async (req, res) => {
   try { await db.setUserActive(req.params.id, !!req.body.active); res.json({ ok: true }); }
   catch (e) { res.status(400).json({ error: e.message }); }
 }));
-app.delete('/api/admin/users/:id', requireAuth, requireAdmin, ah(async (req, res) => {
+app.delete('/api/admin/users/:id', requireAuth, requirePerm('contas'), ah(async (req, res) => {
   try { await db.deleteUser(req.params.id); res.json({ ok: true }); }
   catch (e) { res.status(400).json({ error: e.message }); }
 }));
 
 // ---------- admin: listas de referência (grupos/clientes/promotores) ----------
-app.post('/api/admin/ref/:type', requireAuth, requireAdmin, ah(async (req, res) => {
+app.post('/api/admin/ref/:type', requireAuth, requirePerm('listas'), ah(async (req, res) => {
   try { res.json(await db.addRefItem(req.params.type, req.body.value)); }
   catch (e) { res.status(400).json({ error: e.message }); }
 }));
-app.delete('/api/admin/ref/:type', requireAuth, requireAdmin, ah(async (req, res) => {
+app.delete('/api/admin/ref/:type', requireAuth, requirePerm('listas'), ah(async (req, res) => {
   try { res.json(await db.removeRefItem(req.params.type, req.body.value)); }
   catch (e) { res.status(400).json({ error: e.message }); }
 }));
@@ -301,16 +323,19 @@ app.post('/api/submissions', requireAuth, ah(async (req, res) => {
     grupo: (grupo || '').trim(), dataExposicao,
     promotorNoBanco: existePromotor,
   });
+  // grupo que ainda não está na lista oficial vai pra fila de aprovação do admin
+  // (aparece na aba "Aprovar" junto com os promotores pendentes)
+  if ((grupo || '').trim()) db.addPendente(grupo.trim(), req.user.email, 'grupo').catch(() => {});
   res.json({ ok: true, count: 1, promotorNoBanco: existePromotor });
 }));
 
 app.get('/api/my/submissions', requireAuth, ah(async (req, res) =>
   res.json(await db.listSubmissions({ uploadedBy: req.user.id }))));
 
-app.get('/api/admin/submissions', requireAuth, requireAdmin, ah(async (req, res) =>
+app.get('/api/admin/submissions', requireAuth, requirePerm('fotos'), ah(async (req, res) =>
   res.json(await db.listSubmissions(req.query))));
 
-app.patch('/api/admin/submissions/:id', requireAuth, requireAdmin, ah(async (req, res) => {
+app.patch('/api/admin/submissions/:id', requireAuth, requirePerm('fotos'), ah(async (req, res) => {
   try { res.json(await db.updateSubmission(req.params.id, req.body)); }
   catch (e) { res.status(400).json({ error: e.message }); }
 }));
@@ -321,7 +346,7 @@ const imagensDe = (s) => (s.imagens && s.imagens.length
   : (s.storedFile ? [{ storedFile: s.storedFile, resourceType: s.resourceType || 'image', originalName: s.originalName }] : []));
 
 // excluir uma foto de vez (Mongo + todas as imagens no Cloudinary)
-app.delete('/api/admin/submissions/:id', requireAuth, requireAdmin, ah(async (req, res) => {
+app.delete('/api/admin/submissions/:id', requireAuth, requirePerm('fotos'), ah(async (req, res) => {
   const s = await db.deleteSubmission(req.params.id);
   if (s) for (const img of imagensDe(s)) await store.remove(img.storedFile, img.resourceType || 'image');
   res.json({ ok: true });
@@ -350,7 +375,7 @@ function withRefs(rows) {
 
 // ---------- ZIP no navegador (JSZip): o servidor só entrega o manifesto ----------
 // (serverless-friendly: o pesado — baixar e zipar — acontece no navegador da equipe)
-app.get('/api/admin/download-manifest', requireAuth, requireAdmin, ah(async (req, res) => {
+app.get('/api/admin/download-manifest', requireAuth, requirePerm('fotos'), ah(async (req, res) => {
   const onlyNew = req.query.onlyNew !== '0';
   // foto recusada (validado === false) não entra no download
   const lista = (await db.listSubmissions(onlyNew ? { status: 'novos' } : {})).filter((s) => s.validado !== false);
@@ -374,7 +399,7 @@ app.get('/api/admin/download-manifest', requireAuth, requireAdmin, ah(async (req
 }));
 
 // marca como baixadas (o navegador chama depois de concluir o ZIP com sucesso)
-app.post('/api/admin/mark-downloaded', requireAuth, requireAdmin, ah(async (req, res) => {
+app.post('/api/admin/mark-downloaded', requireAuth, requirePerm('fotos'), ah(async (req, res) => {
   const ids = Array.isArray(req.body.ids) ? req.body.ids : [];
   if (ids.length) await db.markDownloaded(ids);
   res.json({ ok: true, count: ids.length });
@@ -389,7 +414,7 @@ const semanaDoMes = (dateStr) => {
   return isNaN(d) ? '' : `${Math.ceil(d.getUTCDate() / 7)}ª Semana`;
 };
 
-app.get('/api/admin/export.xlsx', requireAuth, requireAdmin, ah(async (req, res) => {
+app.get('/api/admin/export.xlsx', requireAuth, requirePerm('fotos'), ah(async (req, res) => {
   const rows = await db.listSubmissions(req.query);
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Memphis PDV';
@@ -446,7 +471,7 @@ app.get('/api/admin/export.xlsx', requireAuth, requireAdmin, ah(async (req, res)
   res.end();
 }));
 
-app.post('/api/admin/purge', requireAuth, requireAdmin, ah(async (req, res) => {
+app.post('/api/admin/purge', requireAuth, requirePerm('fotos'), ah(async (req, res) => {
   const removed = await db.purgeDownloaded();
   for (const s of removed) for (const img of imagensDe(s)) await store.remove(img.storedFile, img.resourceType || 'image');
   res.json({ removed: removed.length });

@@ -59,8 +59,9 @@
     <!-- APROVAR PROMOTOR -->
     <section id="tab-aprovar" class="hidden">
       <div class="card">
-        <h2>Promotores aguardando aprovação</h2>
-        <p class="muted">Nomes que promotores cadastraram por não estarem no banco. Aprovar adiciona ao banco oficial.</p>
+        <h2>Promotores e grupos aguardando aprovação</h2>
+        <p class="muted">Nomes de promotor e grupos que apareceram nos envios e ainda não estão nas listas oficiais.
+          Aprovar adiciona ao banco/lista — a lista se atualiza sozinha conforme os promotores enviam.</p>
         <div id="pend-list"></div>
       </div>
     </section>
@@ -78,17 +79,50 @@
           </div>
         </div>
         <div class="row" style="margin-top:8px;">
-          <div><label>Telefone</label><input id="u-tel" placeholder="(00) 00000-0000" /></div>
+          <div><label>Telefone</label><input id="u-tel" placeholder="(00) 00000 0000" inputmode="numeric" /></div>
           <div><label>Grupo</label><input id="u-grupo" list="grupos-dl-adm" placeholder="ex: CALMON" /></div>
           <div><label>Região</label><select id="u-regiao"><option value="">—</option></select></div>
+        </div>
+        <div class="row" style="margin-top:8px;">
+          <div><label>Setor</label><input id="u-setor" placeholder="ex: Trade Marketing" /></div>
+          <div><label>Matrícula</label><input id="u-matricula" type="number" min="0" step="1" placeholder="ex: 4021" /></div>
         </div>
         <datalist id="grupos-dl-adm"></datalist>
         <button id="u-create" style="margin-top:12px;">Criar conta</button>
         <button class="secondary" id="u-genpass" style="margin-top:12px;">Gerar senha</button>
       </div>
+
+      <!-- CRACHÁ DE ACESSO TOTAL -->
+      <div class="card" id="card-cracha">
+        <h2>🪪 Crachá de acesso total</h2>
+        <p class="muted">O crachá é um código único (com arquivo pra guardar) que dá <b>acesso total</b> ao painel —
+          todas as permissões, incluindo configurar as permissões dos outros admins. Gerar um crachá novo invalida o anterior.</p>
+        <div id="cracha-gerar" class="hidden">
+          <button id="btn-gerar-cracha">Gerar novo crachá</button>
+          <div id="cracha-out" class="hidden" style="margin-top:10px;">
+            <label>Código (anote — só aparece agora)</label>
+            <input id="cracha-codigo" readonly onclick="this.select()" />
+            <button class="secondary" id="btn-baixar-cracha" style="margin-top:8px;">⬇ Baixar arquivo do crachá</button>
+          </div>
+        </div>
+        <div id="cracha-validar" class="hidden">
+          <p class="muted">Sua conta <b>não tem acesso total</b>. Se você tem o crachá, valide aqui:</p>
+          <div class="row">
+            <div style="flex:1;"><input id="cracha-input" placeholder="cole o código do crachá (MPDV-...)" /></div>
+            <div style="flex:0;"><button id="btn-validar-cracha">Validar</button></div>
+          </div>
+          <label style="margin-top:8px;">ou envie o arquivo do crachá</label>
+          <input type="file" id="cracha-file" accept=".json,.txt" />
+        </div>
+      </div>
+
       <div class="card">
         <h2>Contas (<span id="u-count">0</span>)</h2>
-        <input id="u-search" placeholder="🔎 filtrar por nome, email, grupo, região..." style="margin-bottom:8px;" />
+        <div class="toolbar">
+          <input id="u-search" placeholder="🔎 filtrar por nome, email, setor, matrícula..." style="flex:1;min-width:200px;" />
+          <select id="u-f-regiao"><option value="">Todas regiões</option></select>
+          <select id="u-f-grupo"><option value="">Todos grupos</option></select>
+        </div>
         <div id="u-list"></div>
       </div>
     </section>
@@ -122,54 +156,103 @@
   <script src="/vendor/jszip.min.js"></script>
   <script src="/common.js"></script>
   <script>
-    let ref = {};
+    let ref = {}, me = {};
+    // permissão efetiva do usuário logado ('*' = acesso total via crachá)
+    const eu = (p) => (me.permissions || []).includes('*') || (me.permissions || []).includes(p);
+    const PERM_DA_ABA = { fotos: 'fotos', aprovar: 'aprovar', promotores: 'contas', listas: 'listas' };
 
     async function init() {
-      const me = await api('/api/me');
+      me = await api('/api/me');
       if (me.mustChangePassword) { location.href = '/trocar-senha.html'; return; }
-      document.getElementById('who').textContent = me.name;
+      document.getElementById('who').textContent = me.name + (me.setor ? ' · ' + me.setor : '');
       ref = await api('/api/reference');
       document.getElementById('f-regiao').innerHTML = '<option value="">Todas regiões</option>' +
         ref.regioes.map((r) => `<option value="${r.sigla}">${esc(r.nome)} (${r.sigla})</option>`).join('');
-      document.getElementById('f-grupo').innerHTML = '<option value="">Todos grupos</option>' +
-        ref.grupos.map((g) => `<option>${esc(g)}</option>`).join('');
+      refreshGrupoFilter();
       document.getElementById('prom-total').textContent = ref.promotores.length;
       document.getElementById('grupos-dl-adm').innerHTML = ref.grupos.map((g) => `<option value="${esc(g)}">`).join('');
       document.getElementById('u-regiao').innerHTML = '<option value="">—</option>' +
         ref.regioes.map((r) => `<option value="${r.sigla}">${esc(r.nome)} (${r.sigla})</option>`).join('');
-      loadPhotos();
-      loadPendentes();
+      document.getElementById('u-f-regiao').innerHTML = '<option value="">Todas regiões</option>' +
+        ref.regioes.map((r) => `<option value="${r.sigla}">${esc(r.nome)} (${r.sigla})</option>`).join('');
+      fillUserGrupoFilter();
+      maskTel(document.getElementById('u-tel'));
+
+      // ---- portões de permissão nas abas ----
+      document.querySelectorAll('.tabs button').forEach((b) => {
+        if (!eu(PERM_DA_ABA[b.dataset.tab])) b.classList.add('hidden');
+      });
+      // crachá: quem tem acesso total gera; quem não tem, valida
+      document.getElementById('cracha-gerar').classList.toggle('hidden', !eu('*'));
+      document.getElementById('cracha-validar').classList.toggle('hidden', eu('*'));
+
+      // abre a primeira aba permitida; admin sem NENHUMA permissão vê só o crachá pra validar
+      const primeira = ['fotos', 'aprovar', 'promotores', 'listas'].find((t) => eu(PERM_DA_ABA[t]));
+      // admin sem acesso total e sem a aba Contas ainda precisa conseguir validar o crachá:
+      // move o card pra primeira aba que ele enxerga
+      if (primeira && !eu('*') && !eu('contas')) {
+        document.getElementById('tab-' + primeira).appendChild(document.getElementById('card-cracha'));
+      }
+      if (primeira) {
+        abrirAba(primeira);
+      } else {
+        document.querySelector('.tabs').classList.add('hidden');
+        ['fotos', 'aprovar', 'promotores', 'listas'].forEach((t) => document.getElementById('tab-' + t).classList.add('hidden'));
+        document.getElementById('tab-promotores').classList.remove('hidden');
+        document.querySelectorAll('#tab-promotores .card').forEach((c) => { if (c.id !== 'card-cracha') c.classList.add('hidden'); });
+        toast('Sua conta ainda não tem permissões. Valide um crachá ou peça a um admin com acesso total.', 'bad');
+      }
+      if (eu('fotos')) loadPhotos();
+      if (eu('aprovar')) loadPendentes();
+    }
+
+    // as opções do filtro de grupo das CONTAS: grupos oficiais + grupos que já estão em alguma conta
+    function fillUserGrupoFilter() {
+      const atual = document.getElementById('u-f-grupo').value;
+      const todos = [...new Set([...(ref.grupos || []), ...usersCache.map((u) => u.grupo).filter(Boolean)])]
+        .sort((a, b) => a.localeCompare(b, 'pt-BR'));
+      document.getElementById('u-f-grupo').innerHTML = '<option value="">Todos grupos</option>' +
+        todos.map((g) => `<option ${g === atual ? 'selected' : ''}>${esc(g)}</option>`).join('');
     }
 
     // tabs
-    document.querySelectorAll('.tabs button').forEach((b) => b.addEventListener('click', () => {
-      document.querySelectorAll('.tabs button').forEach((x) => x.classList.remove('active'));
-      b.classList.add('active');
+    function abrirAba(tab) {
+      if (!eu(PERM_DA_ABA[tab])) return;
+      document.querySelectorAll('.tabs button').forEach((x) => x.classList.toggle('active', x.dataset.tab === tab));
       ['fotos', 'aprovar', 'promotores', 'listas'].forEach((t) =>
-        document.getElementById('tab-' + t).classList.toggle('hidden', t !== b.dataset.tab));
-      if (b.dataset.tab === 'aprovar') loadPendentes();
-      if (b.dataset.tab === 'promotores') loadUsers();
-      if (b.dataset.tab === 'listas') renderLists();
-    }));
+        document.getElementById('tab-' + t).classList.toggle('hidden', t !== tab));
+      if (tab === 'aprovar') loadPendentes();
+      if (tab === 'promotores') loadUsers();
+      if (tab === 'listas') renderLists();
+    }
+    document.querySelectorAll('.tabs button').forEach((b) => b.addEventListener('click', () => abrirAba(b.dataset.tab)));
+    const abaAtiva = () => document.querySelector('.tabs button.active')?.dataset.tab;
 
-    // ---- aprovar promotor ----
+    // ---- aprovar promotor / grupo ----
     async function loadPendentes() {
       const rows = await api('/api/admin/pendentes');
       const badge = document.getElementById('pend-badge');
       badge.textContent = rows.length;
       badge.classList.toggle('hidden', rows.length === 0);
-      document.getElementById('pend-list').innerHTML = rows.length ? rows.map((p) => `
+      document.getElementById('pend-list').innerHTML = rows.length ? rows.map((p) => {
+        const tag = p.tipo === 'grupo'
+          ? '<span class="pill" style="background:var(--teal-soft);color:var(--teal);border-color:transparent">🏷 grupo</span>'
+          : '<span class="pill">👤 promotor</span>';
+        return `
         <div class="list-item">
-          <span><b>${esc(p.nome)}</b> <span class="muted">— por ${esc(p.criadoPor || '?')} · ${new Date(p.criadoEm).toLocaleString('pt-BR')}</span></span>
+          <span>${tag} <b>${esc(p.nome)}</b> <span class="muted">— por ${esc(p.criadoPor || '?')} · ${new Date(p.criadoEm).toLocaleString('pt-BR')}</span></span>
           <span><button data-act="aprovar-pend" data-id="${esc(p.id)}" data-nome="${esc(p.nome)}">✓ Aprovar</button>
           <button class="danger" data-act="rejeitar-pend" data-id="${esc(p.id)}">✗ Rejeitar</button></span>
-        </div>`).join('') : '<div class="muted">Nenhum promotor aguardando aprovação.</div>';
+        </div>`;
+      }).join('') : '<div class="muted">Nenhum promotor ou grupo aguardando aprovação.</div>';
     }
     async function aprovarPend(id, nome) {
       await api('/api/admin/pendentes/' + id + '/aprovar', { method: 'POST' });
-      ref = await api('/api/reference'); // banco de promotores cresceu
+      ref = await api('/api/reference'); // banco de promotores / lista de grupos cresceu
       document.getElementById('prom-total').textContent = ref.promotores.length;
-      toast(`"${nome}" aprovado e adicionado ao banco`);
+      refreshGrupoFilter(); fillUserGrupoFilter();
+      document.getElementById('grupos-dl-adm').innerHTML = ref.grupos.map((g) => `<option value="${esc(g)}">`).join('');
+      toast(`"${nome}" aprovado e adicionado`);
       loadPendentes();
     }
     async function rejeitarPend(id) {
@@ -311,40 +394,90 @@
     };
 
     // ---- contas ----
-    let usersCache = [], editingId = null, userFilter = '';
+    let usersCache = [], editingId = null, permEditingId = null, userFilter = '';
     document.getElementById('u-search').addEventListener('input', (e) => {
-      userFilter = e.target.value.toLowerCase(); editingId = null; renderUsers();
+      userFilter = e.target.value.toLowerCase(); editingId = null; permEditingId = null; renderUsers();
     });
+    ['u-f-regiao', 'u-f-grupo'].forEach((id) =>
+      document.getElementById(id).addEventListener('change', () => { editingId = null; permEditingId = null; renderUsers(); }));
     async function loadUsers() {
       usersCache = await api('/api/admin/users');
+      fillUserGrupoFilter();
       renderUsers();
     }
     function nomeRegiao(sigla) {
       const r = ref.regioes.find((x) => x.sigla === sigla);
       return r ? `${r.nome} (${r.sigla})` : sigla;
     }
+    // permissões efetivas de uma conta (admin antigo sem o campo = acesso total)
+    const permsDe = (u) => (u.role !== 'admin' ? [] : (Array.isArray(u.permissions) ? u.permissions : ['*']));
+    function pillsPermissoes(u) {
+      const ps = permsDe(u);
+      if (ps.includes('*')) return '<span class="pill" style="background:var(--purple,#7b3fbf);color:#fff;border-color:transparent">🪪 acesso total</span>';
+      if (!ps.length) return '<span class="pill" style="color:var(--amber)">sem permissões</span>';
+      return ps.map((p) => `<span class="pill">${esc(p)}</span>`).join(' ');
+    }
     function renderUsers() {
+      const fr = document.getElementById('u-f-regiao').value, fg = document.getElementById('u-f-grupo').value;
       const users = usersCache.filter((u) =>
-        [u.name, u.email, u.grupo, u.regiao, u.telefone].join(' ').toLowerCase().includes(userFilter));
-      document.getElementById('u-count').textContent = `${users.length}${userFilter ? ' de ' + usersCache.length : ''}`;
+        (!fr || u.regiao === fr) && (!fg || (u.grupo || '') === fg) &&
+        [u.name, u.email, u.grupo, u.regiao, u.telefone, u.setor, u.matricula].join(' ').toLowerCase().includes(userFilter));
+      document.getElementById('u-count').textContent = `${users.length}${users.length !== usersCache.length ? ' de ' + usersCache.length : ''}`;
       document.getElementById('u-list').innerHTML = users.map((u) => {
         if (u.id === editingId) return editPanel(u);
+        if (u.id === permEditingId) return permPanel(u);
         const ehAdmin = u.role === 'admin';
         const tag = ehAdmin ? '<span class="pill" style="background:var(--teal-soft);color:var(--teal);border-color:transparent">admin</span>'
           : (u.active === false ? '<span class="pill" style="color:var(--red)">banido</span>' : '');
-        const perfil = [u.regiao && nomeRegiao(u.regiao), u.grupo, u.telefone].filter(Boolean).join(' · ');
+        const perfil = [
+          u.regiao && nomeRegiao(u.regiao), u.grupo, fmtTel(u.telefone),
+          u.setor && 'Setor: ' + u.setor,
+          (u.matricula !== null && u.matricula !== undefined) && 'Matrícula: ' + u.matricula,
+        ].filter(Boolean).join(' · ');
         // admin não pode ser banido nem excluído (trava de segurança)
+        const btnPerm = ehAdmin && eu('*')
+          ? `<button class="secondary" data-act="edit-perms" data-id="${esc(u.id)}">🔐 Permissões</button>` : '';
         const acoes = ehAdmin
           ? `<button class="secondary" data-act="edit-user" data-id="${esc(u.id)}">✏️ Editar</button>
+             ${btnPerm}
              <button class="secondary" data-act="reset-pass" data-id="${esc(u.id)}">Nova senha</button>`
           : `<button class="secondary" data-act="edit-user" data-id="${esc(u.id)}">✏️ Editar</button>
              <button class="${u.active === false ? '' : 'danger'}" data-act="toggle-ban" data-id="${esc(u.id)}" data-nome="${esc(u.name)}" data-banido="${u.active === false ? 1 : 0}">${u.active === false ? 'Desbanir' : '🚫 Banir'}</button>
              <button class="secondary" data-act="reset-pass" data-id="${esc(u.id)}">Nova senha</button>
              <button class="ghost" data-act="del-user" data-id="${esc(u.id)}" data-nome="${esc(u.name)}">Excluir</button>`;
         return `<div class="list-item" style="${u.active === false ? 'opacity:.6;' : ''}">
-          <span><b>${esc(u.name)}</b> — ${esc(u.email)} ${tag}${perfil ? `<br><span class="muted" style="font-size:12px;">${esc(perfil)}</span>` : ''}</span>
+          <span><b>${esc(u.name)}</b> — ${esc(u.email)} ${tag}${ehAdmin ? ' ' + pillsPermissoes(u) : ''}${perfil ? `<br><span class="muted" style="font-size:12px;">${esc(perfil)}</span>` : ''}</span>
           <span>${acoes}</span></div>`;
       }).join('') || '<div class="muted">Nenhuma conta.</div>';
+      const et = document.getElementById('e-tel'); if (et) maskTel(et);
+    }
+    // painel de permissões (só quem tem acesso total vê o botão; o servidor confere de novo)
+    function permPanel(u) {
+      const ps = permsDe(u), total = ps.includes('*');
+      const boxes = (ref.permissoes || []).map((p) => `
+        <label style="display:flex;gap:8px;align-items:center;font-weight:400;">
+          <input type="checkbox" class="perm-box" value="${esc(p.id)}" ${!total && ps.includes(p.id) ? 'checked' : ''} ${total ? 'disabled' : ''} style="width:auto;" />
+          ${esc(p.nome)}</label>`).join('');
+      return `<div class="list-item" style="display:block;background:var(--panel2);border:1px solid var(--teal);border-radius:8px;padding:12px;">
+        <b>🔐 Permissões de ${esc(u.name)}</b>
+        <label style="display:flex;gap:8px;align-items:center;margin-top:10px;font-weight:400;">
+          <input type="checkbox" id="perm-total" ${total ? 'checked' : ''} onchange="document.querySelectorAll('.perm-box').forEach(b=>b.disabled=this.checked)" style="width:auto;" />
+          🪪 <b>Acesso total</b> (tudo, incluindo permissões e crachá)</label>
+        <div style="margin-top:8px;display:grid;gap:6px;">${boxes}</div>
+        <div style="margin-top:10px;">
+          <button data-act="save-perms" data-id="${esc(u.id)}">💾 Salvar permissões</button>
+          <button class="ghost" data-act="cancel-edit">Cancelar</button>
+        </div>
+      </div>`;
+    }
+    async function savePerms(id) {
+      const permissions = document.getElementById('perm-total').checked
+        ? ['*']
+        : [...document.querySelectorAll('.perm-box:checked')].map((b) => b.value);
+      try {
+        await api('/api/admin/users/' + id + '/permissions', { method: 'PATCH', body: JSON.stringify({ permissions }) });
+        toast('Permissões salvas ✓'); permEditingId = null; loadUsers();
+      } catch (e) { toast(e.message, 'bad'); }
     }
     function editPanel(u) {
       const regs = '<option value="">—</option>' + ref.regioes.map((r) =>
@@ -356,9 +489,13 @@
           <div><label>E-mail</label><input id="e-email" type="email" value="${esc(u.email)}" /></div>
         </div>
         <div class="row" style="margin-top:8px;">
-          <div><label>Telefone</label><input id="e-tel" value="${esc(u.telefone || '')}" placeholder="(00) 00000-0000" /></div>
+          <div><label>Telefone</label><input id="e-tel" value="${esc(fmtTel(u.telefone))}" placeholder="(00) 00000 0000" inputmode="numeric" /></div>
           <div><label>Grupo</label><input id="e-grupo" list="grupos-dl-adm" value="${esc(u.grupo || '')}" /></div>
           <div><label>Região</label><select id="e-regiao">${regs}</select></div>
+        </div>
+        <div class="row" style="margin-top:8px;">
+          <div><label>Setor</label><input id="e-setor" value="${esc(u.setor || '')}" placeholder="ex: Trade Marketing" /></div>
+          <div><label>Matrícula</label><input id="e-matricula" type="number" min="0" step="1" value="${u.matricula !== null && u.matricula !== undefined ? esc(u.matricula) : ''}" placeholder="ex: 4021" /></div>
         </div>
         <div style="margin-top:10px;">
           <button data-act="save-user" data-id="${esc(u.id)}">💾 Salvar</button>
@@ -367,12 +504,17 @@
         </div>
       </div>`;
     }
-    function editUser(id) { editingId = id; renderUsers(); }
+    function editUser(id) { editingId = id; permEditingId = null; renderUsers(); }
+    function editPerms(id) { permEditingId = id; editingId = null; renderUsers(); }
     async function saveUser(id) {
       try {
         await api('/api/admin/users/' + id, {
           method: 'PATCH',
-          body: JSON.stringify({ name: val('e-name'), email: val('e-email'), telefone: val('e-tel'), grupo: val('e-grupo'), regiao: val('e-regiao') }),
+          body: JSON.stringify({
+            name: val('e-name'), email: val('e-email'), telefone: val('e-tel'),
+            grupo: val('e-grupo'), regiao: val('e-regiao'),
+            setor: val('e-setor'), matricula: val('e-matricula'),
+          }),
         });
         toast('Perfil salvo ✓'); editingId = null; loadUsers();
       } catch (e) { toast(e.message, 'bad'); }
@@ -390,10 +532,11 @@
     document.getElementById('u-create').onclick = async () => {
       try {
         const body = { name: val('u-name'), email: val('u-email'), password: val('u-pass'), role: val('u-role'),
-          telefone: val('u-tel'), grupo: val('u-grupo'), regiao: val('u-regiao') };
+          telefone: val('u-tel'), grupo: val('u-grupo'), regiao: val('u-regiao'),
+          setor: val('u-setor'), matricula: val('u-matricula') };
         await api('/api/admin/users', { method: 'POST', body: JSON.stringify(body) });
         toast(`Conta de ${body.role} criada. Senha: ${body.password}`);
-        ['u-name', 'u-email', 'u-pass', 'u-tel', 'u-grupo', 'u-regiao'].forEach((i) => (document.getElementById(i).value = ''));
+        ['u-name', 'u-email', 'u-pass', 'u-tel', 'u-grupo', 'u-regiao', 'u-setor', 'u-matricula'].forEach((i) => (document.getElementById(i).value = ''));
         loadUsers();
       } catch (e) { toast(e.message, 'bad'); }
     };
@@ -432,13 +575,72 @@
       renderLists(); refreshGrupoFilter();
     }
     function refreshGrupoFilter() {
-      document.getElementById('f-grupo').innerHTML = '<option value="">Todos grupos</option>' + ref.grupos.map((g) => `<option>${esc(g)}</option>`).join('');
+      const sel = document.getElementById('f-grupo'), atual = sel.value;
+      sel.innerHTML = '<option value="">Todos grupos</option>' + ref.grupos.map((g) => `<option ${g === atual ? 'selected' : ''}>${esc(g)}</option>`).join('');
     }
 
     document.getElementById('cfg-save').onclick = async () => {
       ref.senhas = await api('/api/admin/config', { method: 'PATCH', body: JSON.stringify({ senhaMensal: val('cfg-sm'), senhaSemanal: val('cfg-ss') }) });
       toast('Senhas atualizadas ✓');
     };
+
+    // ---- crachá de acesso total ----
+    let crachaCodigo = '';
+    document.getElementById('btn-gerar-cracha').onclick = async () => {
+      if (!confirm('Gerar um crachá NOVO? O crachá anterior deixa de valer na hora.')) return;
+      try {
+        const r = await api('/api/admin/cracha', { method: 'POST' });
+        crachaCodigo = r.codigo;
+        document.getElementById('cracha-codigo').value = r.codigo;
+        document.getElementById('cracha-out').classList.remove('hidden');
+        toast('Crachá gerado — anote o código ou baixe o arquivo');
+      } catch (e) { toast(e.message, 'bad'); }
+    };
+    document.getElementById('btn-baixar-cracha').onclick = () => {
+      const blob = new Blob([JSON.stringify({ app: 'memphis-pdv', tipo: 'cracha', codigo: crachaCodigo, geradoEm: new Date().toISOString() }, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'cracha-memphis-pdv.json';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    };
+    async function validarCracha(codigo) {
+      try {
+        await api('/api/cracha/validar', { method: 'POST', body: JSON.stringify({ codigo }) });
+        toast('Crachá validado — acesso total liberado ✓');
+        setTimeout(() => location.reload(), 900); // recarrega pra abrir tudo
+      } catch (e) { toast(e.message, 'bad'); }
+    }
+    document.getElementById('btn-validar-cracha').onclick = () => validarCracha(val('cracha-input'));
+    document.getElementById('cracha-file').addEventListener('change', async (e) => {
+      const f = e.target.files[0];
+      if (!f) return;
+      const txt = await f.text();
+      let codigo = txt.trim();
+      try { const j = JSON.parse(txt); if (j && j.codigo) codigo = j.codigo; } catch {}
+      validarCracha(codigo);
+      e.target.value = '';
+    });
+
+    // ---- atualização automática: novidades dos promotores aparecem sem recarregar ----
+    // a cada 10s: badge de pendentes + lista de contas (se aberta); a cada 30s: referência
+    // (grupos/promotores novos) — pausa quando a aba do navegador está em segundo plano.
+    setInterval(() => {
+      if (document.hidden) return;
+      if (eu('aprovar')) loadPendentes().catch(() => {});
+      if (abaAtiva() === 'promotores' && eu('contas') && editingId === null && permEditingId === null) loadUsers().catch(() => {});
+      if (abaAtiva() === 'fotos' && eu('fotos')) loadPhotos().catch(() => {});
+    }, 10000);
+    setInterval(async () => {
+      if (document.hidden) return;
+      try {
+        ref = await api('/api/reference');
+        document.getElementById('prom-total').textContent = ref.promotores.length;
+        document.getElementById('grupos-dl-adm').innerHTML = ref.grupos.map((g) => `<option value="${esc(g)}">`).join('');
+        refreshGrupoFilter(); fillUserGrupoFilter();
+        if (abaAtiva() === 'listas') renderLists();
+      } catch {}
+    }, 30000);
 
     // ---- delegação de eventos (sem handlers inline: evita injeção via dados do usuário) ----
     document.addEventListener('click', (e) => {
@@ -455,7 +657,9 @@
         case 'del-photo': return delPhoto(d.id);
         case 'toggle-ban': return toggleBan(d.id, d.nome, d.banido === '1');
         case 'edit-user': return editUser(d.id);
-        case 'cancel-edit': { editingId = null; return renderUsers(); }
+        case 'edit-perms': return editPerms(d.id);
+        case 'save-perms': return savePerms(d.id);
+        case 'cancel-edit': { editingId = null; permEditingId = null; return renderUsers(); }
         case 'save-user': return saveUser(d.id);
         case 'reset-pass': return resetPass(d.id);
         case 'del-user': return delUser(d.id, d.nome);

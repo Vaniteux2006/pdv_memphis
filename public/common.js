@@ -38,6 +38,22 @@ function toast(msg, type = 'ok') {
   el._t = setTimeout(() => (el.className = 'toast'), 2600);
 }
 
+// telefone: no banco só dígitos; aqui vira "(00) 00000 0000" (celular) ou "(00) 0000 0000" (fixo)
+function fmtTel(v) {
+  const d = String(v || '').replace(/\D/g, '').slice(0, 11);
+  if (!d) return '';
+  if (d.length <= 2) return '(' + d;
+  if (d.length <= 6) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
+  if (d.length <= 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)} ${d.slice(6)}`;
+  return `(${d.slice(0, 2)}) ${d.slice(2, 7)} ${d.slice(7)}`;
+}
+// máscara ao digitar (mantém o cursor no fim — suficiente pro nosso uso)
+function maskTel(input) {
+  if (!input || input._masked) return;
+  input._masked = true;
+  input.addEventListener('input', () => { input.value = fmtTel(input.value); });
+}
+
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
