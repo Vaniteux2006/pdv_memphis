@@ -263,7 +263,12 @@ app.post('/api/admin/users/import', requireAuth, requirePerm('contas'), ah(async
       ['matricula', /matr/], ['role', /tipo|perfil|cargo/], ['senha', /senha/],
     ];
     const linhas = new Map(); // email -> dados (repetido na planilha: a primeira linha vale)
+    // teto de linhas VARRIDAS: sem isso, uma planilha gigante (mesmo abaixo do 1MB do corpo)
+    // faria a leitura síncrona travar o event loop por dezenas de segundos antes do corte de 500
+    const MAX_VARRER = IMPORT_MAX_LINHAS * 20;
+    let varridas = 0, demais = false;
     for (const ws of wb.worksheets) {
+      if (demais) break;
       // procura o cabeçalho nas 3 primeiras linhas da aba
       let cols = {}, headerRow = 0;
       for (let r = 1; r <= 3 && cols.email === undefined; r++) {
@@ -278,6 +283,8 @@ app.post('/api/admin/users/import', requireAuth, requirePerm('contas'), ah(async
       }
       if (cols.email === undefined || cols.name === undefined) continue; // aba sem Nome/E-mail
       for (let r = headerRow + 1; r <= ws.actualRowCount; r++) {
+        // corta cedo: passou do limite de contas OU varreu linhas demais → para na hora
+        if (linhas.size > IMPORT_MAX_LINHAS || ++varridas > MAX_VARRER) { demais = true; break; }
         const row = ws.getRow(r), d = { linha: `aba "${ws.name}", linha ${r}` };
         for (const [campo] of CAMPOS) if (cols[campo] !== undefined) d[campo] = celTxt(row.getCell(cols[campo]).value).replace(/\s+/g, ' ').trim();
         d.email = String(d.email || '').toLowerCase();
@@ -285,8 +292,8 @@ app.post('/api/admin/users/import', requireAuth, requirePerm('contas'), ah(async
         if (!linhas.has(d.email)) linhas.set(d.email, d);
       }
     }
+    if (demais) return res.status(400).json({ error: `Planilha grande demais — o máximo é ${IMPORT_MAX_LINHAS} contas por importação. Divida em mais de um arquivo.` });
     if (!linhas.size) return res.status(400).json({ error: 'Não achei as colunas "Nome" e "E-mail" na planilha (o cabeçalho precisa estar nas 3 primeiras linhas)' });
-    if (linhas.size > IMPORT_MAX_LINHAS) return res.status(400).json({ error: `Planilha com ${linhas.size} contas — o máximo por importação é ${IMPORT_MAX_LINHAS}. Divida em mais de um arquivo.` });
 
     const regiaoDe = (v) => {
       const alvo = semAcento(v).toUpperCase().trim();
