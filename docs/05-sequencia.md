@@ -11,12 +11,13 @@ sequenceDiagram
   S->>DB: findUserByEmail(email)
   DB-->>S: usuário { passwordHash, active, role }
   alt inativo ou senha errada
-    S-->>U: 401 { error }
+    S-->>U: 401 { error }  (rate-limit: 10 falhas/15min)
   else ok
     S->>S: jwt.sign({ uid, role })
-    S-->>U: 200 { role, name } + Set-Cookie: mp_token (httpOnly)
+    S-->>U: 200 { role, name, mustChangePassword } + Set-Cookie: mp_token (httpOnly)
   end
-  Note over U,S: Requisições seguintes mandam o cookie.<br/>requireAuth verifica o JWT e revalida 'active' no Mongo.
+  Note over U,S: Se mustChangePassword=true, o front leva pra trocar-senha.html<br/>antes de liberar o app (senha provisória).
+  Note over U,S: Requisições seguintes mandam o cookie.<br/>requireAuth verifica o JWT e revalida 'active' no Mongo;<br/>rotas /api/admin/* ainda passam pelo requirePerm (permissão granular).
 ```
 
 ## Envio de foto (upload direto, assinado)
@@ -32,16 +33,18 @@ sequenceDiagram
   S->>S: assina { folder, timestamp, type } com o api_secret
   S-->>Pr: { signature, timestamp, apiKey, cloudName, folder, type }
 
-  loop cada foto (comprimida no navegador)
+  loop cada imagem (1 ou 2 = "antes e depois", comprimida no navegador)
     Pr->>Cl: POST /image/upload (file + assinatura)
     Cl-->>Pr: { public_id, resource_type }
   end
 
   Pr->>S: POST /api/submissions { metadados, fotos:[public_id...] }
-  S->>S: valida campos + limite 2/cliente + prefixo da pasta
+  S->>S: valida campos + prefixo da pasta
+  S->>DB: trava por data de exposição: 1 foto/semana, 4/mês
   S->>DB: getConfig() (senhas atuais)
   S->>DB: promotorExiste(nome)
-  S->>DB: addSubmission(...)  (uma por foto)
+  S->>DB: addSubmission(...)  (1 submissão com o array de imagens)
+  S->>DB: grupo novo? addPendente(grupo) (fila de aprovação)
   S-->>Pr: 200 { ok, count }
   Note over S,Cl: Se a validação falhar, o servidor apaga<br/>as fotos órfãs do Cloudinary.
 ```
@@ -88,20 +91,42 @@ sequenceDiagram
   Note over Ad: O servidor não monta o ZIP — sem timeout serverless.<br/>Marca como baixado só após o ZIP pronto.
 ```
 
-## Aprovação de promotor
+## Aprovação de promotor / grupo
 
 ```mermaid
 sequenceDiagram
   actor Pr as Promotor
-  actor Ad as Admin
+  actor Ad as Admin (permissão 'aprovar')
   participant S as Servidor
   participant DB as MongoDB
-  Pr->>S: POST /api/promotor-pendente { nome }
-  S->>DB: addPendente(nome)
+  Pr->>S: POST /api/promotor-pendente { nome }  (ou grupo novo no envio da foto)
+  S->>DB: addPendente(nome, tipo: promotor|grupo)
   S-->>Pr: { ok } (aguardando aprovação)
   Ad->>S: GET /api/admin/pendentes
-  S-->>Ad: lista
+  S-->>Ad: lista (com tipo)
   Ad->>S: POST /api/admin/pendentes/:id/aprovar
-  S->>DB: addRefItem('promotores', nome) + remove pendente
+  S->>DB: addRefItem('promotores' ou 'grupos', nome) + remove pendente
   S-->>Ad: { nome }
+```
+
+## Criar contas em massa por planilha
+
+```mermaid
+sequenceDiagram
+  actor Ad as Admin (navegador)
+  participant S as Servidor
+  participant DB as MongoDB
+  Ad->>Ad: seleciona o .xlsx (botão "Criar por planilha")
+  Ad->>S: POST /api/admin/users/import { file: base64 }
+  S->>S: ExcelJS lê a planilha e acha as colunas pelo cabeçalho
+  loop cada linha (máx 500, deduplicada por e-mail)
+    S->>DB: findUserByEmail(email)
+    alt e-mail novo
+      S->>DB: createUser(senha provisória PRIMEIRONOME+ano,<br/>mustChangePassword=true)
+    else já existe
+      S->>DB: updateUser(só os campos preenchidos — senha intocada)
+    end
+  end
+  S-->>Ad: { criados:[{name,email,senha}], atualizados, erros:[{linha,motivo}] }
+  Ad->>Ad: mostra o resumo + baixa CSV com as senhas provisórias
 ```

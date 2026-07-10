@@ -237,6 +237,89 @@ app.post('/api/admin/users', requireAuth, requirePerm('contas'), ah(async (req, 
     res.json(await db.createUser({ email, name, password, role, mustChangePassword, grupo, regiao, telefone, setor, matricula, permissions: perms }));
   } catch (e) { res.status(400).json({ error: e.message }); }
 }));
+// importa contas em massa a partir de uma planilha .xlsx (arquivo em base64 no JSON).
+// Acha as colunas pelo cabeçalho: Nome e E-mail obrigatórias; Telefone, Grupo, Região,
+// Setor, Matrícula, Tipo e Senha opcionais. E-mail novo cria a conta com senha provisória
+// (troca obrigatória no 1º login); e-mail já cadastrado só tem o perfil atualizado.
+const celTxt = (v) => {
+  if (v == null) return '';
+  if (typeof v === 'object') return v.text || (v.result !== undefined ? String(v.result) : (v.richText ? v.richText.map((t) => t.text).join('') : ''));
+  return String(v);
+};
+const semAcento = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '');
+const IMPORT_MAX_LINHAS = 500; // bcrypt leva ~80ms por senha — acima disso a requisição estoura o tempo
+app.post('/api/admin/users/import', requireAuth, requirePerm('contas'), ah(async (req, res) => {
+  try {
+    if (!req.body.file) return res.status(400).json({ error: 'Nenhum arquivo recebido' });
+    const wb = new ExcelJS.Workbook();
+    try { await wb.xlsx.load(Buffer.from(String(req.body.file), 'base64')); }
+    catch { return res.status(400).json({ error: 'Arquivo inválido — envie uma planilha .xlsx' }); }
+
+    const CAMPOS = [
+      ['email', /e-?mail/], ['name', /nome/], ['telefone', /telefone|celular|fone/],
+      ['grupo', /grupo/], ['regiao', /regi/], ['setor', /setor/],
+      ['matricula', /matr/], ['role', /tipo|perfil|cargo/], ['senha', /senha/],
+    ];
+    const linhas = new Map(); // email -> dados (repetido na planilha: a primeira linha vale)
+    for (const ws of wb.worksheets) {
+      // procura o cabeçalho nas 3 primeiras linhas da aba
+      let cols = {}, headerRow = 0;
+      for (let r = 1; r <= 3 && cols.email === undefined; r++) {
+        cols = {};
+        const row = ws.getRow(r);
+        for (let c = 1; c <= 30; c++) {
+          const h = semAcento(celTxt(row.getCell(c).value)).toLowerCase().trim();
+          if (!h) continue;
+          for (const [campo, re] of CAMPOS) if (cols[campo] === undefined && re.test(h)) cols[campo] = c;
+        }
+        headerRow = r;
+      }
+      if (cols.email === undefined || cols.name === undefined) continue; // aba sem Nome/E-mail
+      for (let r = headerRow + 1; r <= ws.actualRowCount; r++) {
+        const row = ws.getRow(r), d = { linha: `aba "${ws.name}", linha ${r}` };
+        for (const [campo] of CAMPOS) if (cols[campo] !== undefined) d[campo] = celTxt(row.getCell(cols[campo]).value).replace(/\s+/g, ' ').trim();
+        d.email = String(d.email || '').toLowerCase();
+        if (!d.email && !d.name) continue; // linha em branco
+        if (!linhas.has(d.email)) linhas.set(d.email, d);
+      }
+    }
+    if (!linhas.size) return res.status(400).json({ error: 'Não achei as colunas "Nome" e "E-mail" na planilha (o cabeçalho precisa estar nas 3 primeiras linhas)' });
+    if (linhas.size > IMPORT_MAX_LINHAS) return res.status(400).json({ error: `Planilha com ${linhas.size} contas — o máximo por importação é ${IMPORT_MAX_LINHAS}. Divida em mais de um arquivo.` });
+
+    const regiaoDe = (v) => {
+      const alvo = semAcento(v).toUpperCase().trim();
+      const r = db.REGIOES.find((x) => x.sigla === alvo || semAcento(x.nome).toUpperCase() === alvo);
+      return r ? r.sigla : null;
+    };
+    const criados = [], atualizados = [], erros = [];
+    for (const d of linhas.values()) {
+      try {
+        if (!/^[^\s@]+@[^\s@]+$/.test(d.email)) throw new Error('e-mail inválido'); // mesma regra do resto do app
+        let regiao;
+        if (d.regiao) {
+          regiao = regiaoDe(d.regiao);
+          if (!regiao) throw new Error(`região "${d.regiao}" inválida — use ${db.REGIOES.map((x) => x.sigla).join(', ')}`);
+        }
+        const existente = await db.findUserByEmail(d.email);
+        if (existente) {
+          const fields = {};
+          for (const k of ['name', 'telefone', 'grupo', 'setor', 'matricula']) if (d[k]) fields[k] = d[k];
+          if (regiao) fields.regiao = regiao;
+          if (Object.keys(fields).length) await db.updateUser(existente.id, fields);
+          atualizados.push({ name: existente.name, email: d.email });
+        } else {
+          if (!d.name) throw new Error('sem nome');
+          const senha = d.senha || d.name.split(/\s+/)[0].toUpperCase() + new Date().getFullYear();
+          const role = /adm/i.test(d.role || '') ? 'admin' : 'promotor';
+          await db.createUser({ email: d.email, name: d.name, password: senha, role, mustChangePassword: true,
+            grupo: d.grupo, regiao: regiao || '', telefone: d.telefone, setor: d.setor, matricula: d.matricula });
+          criados.push({ name: d.name, email: d.email, senha, role });
+        }
+      } catch (e) { erros.push({ linha: d.linha, email: d.email, motivo: e.message }); }
+    }
+    res.json({ criados, atualizados, erros });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+}));
 // admin edita o perfil da conta (nome, email, grupo, região, telefone, setor, matrícula)
 app.patch('/api/admin/users/:id', requireAuth, requirePerm('contas'), ah(async (req, res) => {
   try {

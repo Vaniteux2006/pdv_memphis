@@ -90,6 +90,11 @@
         <datalist id="grupos-dl-adm"></datalist>
         <button id="u-create" style="margin-top:12px;">Criar conta</button>
         <button class="secondary" id="u-genpass" style="margin-top:12px;">Gerar senha</button>
+        <button class="secondary" id="u-import" style="margin-top:12px;">📥 Criar por planilha</button>
+        <input type="file" id="u-import-file" accept=".xlsx" class="hidden" />
+        <p class="muted" style="margin-top:8px;">Planilha .xlsx com colunas <b>Nome</b> e <b>E-mail</b> (e, se quiser, Telefone, Grupo, Região, Setor, Matrícula, Tipo e Senha).
+          E-mail novo vira conta com senha provisória <b>PRIMEIRONOME + ano</b> (troca obrigatória no 1º acesso); e-mail já cadastrado só tem o perfil atualizado.</p>
+        <div id="u-import-result" class="hidden" style="margin-top:10px;"></div>
       </div>
 
       <!-- CRACHÁ DE ACESSO TOTAL -->
@@ -540,6 +545,49 @@
         loadUsers();
       } catch (e) { toast(e.message, 'bad'); }
     };
+    // ---- criar contas por planilha ----
+    let importCriados = [];
+    const impFile = document.getElementById('u-import-file');
+    document.getElementById('u-import').onclick = () => impFile.click();
+    impFile.addEventListener('change', async () => {
+      const f = impFile.files[0]; impFile.value = '';
+      if (!f) return;
+      if (f.size > 700 * 1024) return toast('Arquivo muito grande (máx. 700KB) — deixe na planilha só as colunas necessárias', 'bad');
+      const btn = document.getElementById('u-import');
+      btn.disabled = true; btn.textContent = '⏳ Importando...';
+      try {
+        const b64 = await new Promise((ok, err) => {
+          const r = new FileReader();
+          r.onload = () => ok(r.result.split(',')[1]);
+          r.onerror = () => err(new Error('Não consegui ler o arquivo'));
+          r.readAsDataURL(f);
+        });
+        const r = await api('/api/admin/users/import', { method: 'POST', body: JSON.stringify({ file: b64 }) });
+        mostraImport(r);
+        toast(`${r.criados.length} criada(s), ${r.atualizados.length} atualizada(s)${r.erros.length ? `, ${r.erros.length} erro(s)` : ''}`, r.erros.length ? 'bad' : 'ok');
+        loadUsers();
+      } catch (e) { toast(e.message, 'bad'); }
+      btn.disabled = false; btn.textContent = '📥 Criar por planilha';
+    });
+    function mostraImport(r) {
+      importCriados = r.criados;
+      const box = document.getElementById('u-import-result');
+      box.classList.remove('hidden');
+      box.innerHTML = `
+        <b>Resultado:</b> ${r.criados.length} conta(s) criada(s), ${r.atualizados.length} atualizada(s), ${r.erros.length} erro(s).
+        ${r.criados.length ? '<div style="margin-top:8px;"><button class="secondary" id="btn-baixar-senhas">⬇ Baixar senhas provisórias (.csv)</button></div>' : ''}
+        ${r.erros.length ? '<div style="margin-top:8px;">' + r.erros.map((e) =>
+          `<div class="muted">✗ ${esc(e.linha)}${e.email ? ' (' + esc(e.email) + ')' : ''}: ${esc(e.motivo)}</div>`).join('') + '</div>' : ''}`;
+      const b = document.getElementById('btn-baixar-senhas');
+      if (b) b.onclick = () => {
+        const csv = '\uFEFFNome;E-mail;Senha provisória\n' + importCriados.map((u) => `${u.name};${u.email};${u.senha}`).join('\n'); // BOM: acentos certos no Excel
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+        a.download = 'senhas-provisorias.csv';
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      };
+    }
     async function resetPass(id) {
       const p = prompt('Nova senha:', Math.random().toString(36).slice(2, 8) + Math.floor(Math.random() * 90 + 10));
       if (!p) return;

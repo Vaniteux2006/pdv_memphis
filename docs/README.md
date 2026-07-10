@@ -13,7 +13,7 @@ baixa em ZIP organizado por região e exporta para Excel no modelo das planilhas
 |-----|----------|
 | [01 — Arquitetura](01-arquitetura.md) | Componentes, stack, topologia, ciclo de uma requisição |
 | [02 — Modelo de Dados](02-modelo-de-dados.md) | Coleções MongoDB, diagrama ER, índices |
-| [03 — Referência da API](03-api.md) | Todos os 26 endpoints, autenticação, payloads |
+| [03 — Referência da API](03-api.md) | Todos os 36 endpoints, autenticação, permissões, payloads |
 | [04 — Fluxos de Negócio (BPMN)](04-fluxos-bpmn.md) | Processo ponta-a-ponta, ciclo de vida da submissão |
 | [05 — Diagramas de Sequência (UML)](05-sequencia.md) | Login, upload direto, download ZIP, aprovação |
 | [06 — Estrutura de Código (UML)](06-uml-componentes.md) | Diagrama de classes/módulos |
@@ -44,27 +44,27 @@ flowchart LR
   R --> STL --> CL
 ```
 
-- **Frontend:** HTML + JS puro (sem build) em `public/`.
+- **Frontend:** HTML + JS puro (sem build) em `public/`. O ZIP é montado **no navegador** (JSZip).
 - **Backend:** Node + Express (`server.js`).
 - **Banco:** MongoDB Atlas — só metadados (texto). `lib/db.js` + `lib/mongo.js`.
-- **Arquivos:** Cloudinary — as fotos. `lib/storage.js`.
-- **Autenticação:** JWT em cookie `httpOnly` (`mp_token`).
-- **Hospedagem-alvo:** Vercel (serverless) — ver [08 — Deploy](08-deploy.md).
+- **Arquivos:** Cloudinary — as fotos (upload direto do navegador, entrega assinada). `lib/storage.js`.
+- **Autenticação:** JWT em cookie `httpOnly` (`mp_token`) + **permissões granulares** por admin (crachá = acesso total).
+- **Hospedagem-alvo:** Discloud (Node persistente); empacote Vercel também pronto — ver [08 — Deploy](08-deploy.md).
 
 ## Papéis
 
 | Papel | O que faz |
 |-------|-----------|
-| **Promotor** | Loga, envia até 2 fotos por cliente com os dados do registro, acompanha o status (avaliação / pago). |
-| **Admin (equipe)** | Vê e busca todas as fotos, avalia, valida/recusa, marca pago, baixa ZIP e Excel, gerencia listas, aprova/bane promotores e cria outras contas (inclusive admins). |
+| **Promotor** | Loga (troca senha provisória no 1º acesso), envia **1 foto/semana e até 4/mês** (cada foto com 1 ou 2 imagens — "antes e depois"), acompanha o status (avaliação / pago). |
+| **Admin (equipe)** | Conforme suas **permissões**: `fotos` (busca, avalia, valida/recusa, marca pago, exclui, baixa ZIP e Excel), `aprovar` (promotores e grupos novos), `contas` (cria/edita contas, **importa por planilha**, bane), `listas` (grupos, banco de promotores, senhas da campanha). Acesso total (`*`) só via **crachá**. |
 
 ## Teste de regressão
 
-`test/smoke.js` exercita **25 cenários** ponta-a-ponta (auth, upload no Cloudinary,
-avaliação, pago, banir, criar admin, ZIP, Excel, purge).
+`test/smoke.js` roda ~**56 verificações** ponta-a-ponta (auth, permissões, upload no
+Cloudinary, avaliação, pago, banir, criar admin, senha provisória, reset por email,
+ZIP, Excel, purge). Há também `test/pentest.js` (segurança) e `test/carga.js` (escala).
 
 ```bash
-# subir o servidor apontando p/ um banco de teste e rodar:
-MONGO_DB=memphis_pdv_test node server.js
+node tools/dev-preview.js   # sobe o servidor no banco de TESTE (porta 3000)
 node test/smoke.js
 ```

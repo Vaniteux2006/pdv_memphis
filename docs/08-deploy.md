@@ -4,9 +4,9 @@
 
 ```mermaid
 flowchart LR
-  A["A · Banco → MongoDB"]:::done --> B["B · Fotos → Cloudinary"]:::done --> C["C · JWT + upload direto + ZIP + empacote Vercel"]:::done --> D["D · Segurança + deploy + piloto"]:::todo
+  A["A · Banco → MongoDB"]:::done --> B["B · Fotos → Cloudinary"]:::done --> C["C · JWT + upload direto + ZIP + empacote Vercel"]:::done --> D["D · Segurança + deploy + piloto"]:::part
   classDef done fill:#d6f5dd,stroke:#2f9e54;
-  classDef todo fill:#f1f1f3,stroke:#999;
+  classDef part fill:#fff3cd,stroke:#c9a227;
 ```
 
 | Passo | Status |
@@ -17,13 +17,24 @@ flowchart LR
 | C2 — **Upload direto** browser→Cloudinary | ✅ Feito |
 | C3 — **ZIP no navegador** (JSZip) | ✅ Feito |
 | C4 — Empacotar pra **Vercel** (`vercel.json` + `api/index.js`) | ✅ Feito |
-| D — Endurecimento de segurança + deploy + piloto | ⬜ Próximo |
+| D1 — Endurecimento de segurança (helmet, rate-limit, pentest, permissões) | ✅ Feito |
+| D2 — Rotacionar segredos + trocar admin padrão | ⬜ Antes do go-live |
+| D3 — Deploy real + piloto | ⬜ Depende de conta/env do usuário |
+
+## Onde hospedar
+
+O app roda **nos dois modelos** sem mudar código:
+
+| Host | Modelo | Situação |
+|------|--------|----------|
+| **Discloud** | Processo Node **persistente** (`node server.js`) | **Alvo provável** — o usuário já usa pra outro app. `discloud.config` pronto (TYPE=site, MAIN=server.js, RAM=512). Vantagens: rate-limit e portão de concorrência em memória funcionam de verdade; sem timeout de função. |
+| **Vercel** | Função **serverless** | Empacote pronto (C4). Atenção: rate-limit por instância (precisaria de Redis pra valer globalmente). |
 
 ## Como o empacotamento serverless funciona (C4)
 
 - `server.js` **exporta o app** (`module.exports = app`) e só chama `app.listen`
-  quando rodado direto (`require.main === module`) — ou seja, **local** sobe servidor HTTP;
-  na **Vercel** o app é importado como função.
+  quando rodado direto (`require.main === module`) — ou seja, **local/Discloud** sobe
+  servidor HTTP; na **Vercel** o app é importado como função.
 - Um middleware **`ready`** (lazy + cacheado) garante que o Mongo conectou/seedou antes
   de qualquer rota — roda **1× por instância** serverless.
 - `api/index.js` é o entrypoint da função: `module.exports = require('../server.js')`.
@@ -39,33 +50,26 @@ flowchart LR
   RDY --> RT["rotas + express.static"]
 ```
 
-## Como subir na Vercel (passo a passo — feito por você)
+## Como subir (passo a passo — feito por você)
 
+**Discloud:** zipar o projeto (sem `node_modules`), `discloud.config` já está na raiz,
+subir pelo painel/bot e configurar as variáveis de ambiente (ou incluir o `.env` no zip —
+**nunca** no GitHub público).
+
+**Vercel:**
 1. **Conta:** criar conta grátis em vercel.com (Hobby, sem cartão).
 2. **Código:** subir o projeto pra um repositório (GitHub) **ou** usar a CLI:
    `npm i -g vercel` e rodar `vercel` na pasta do projeto.
 3. **Importar o projeto** na Vercel (framework: *Other* — ele detecta o `vercel.json`).
 4. **Variáveis de ambiente** (Project → Settings → Environment Variables): cadastrar
-   `MONGODB_URI`, `MONGO_DB`, `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`,
-   `CLOUDINARY_API_SECRET`, `SESSION_SECRET`, `NODE_ENV=production`.
-5. **MongoDB Atlas → Network Access:** liberar `0.0.0.0/0` (a Vercel usa IPs dinâmicos)
-   ou a lista de IPs da Vercel.
+   as da tabela abaixo.
+5. **MongoDB Atlas → Network Access:** liberar `0.0.0.0/0` (IPs dinâmicos)
+   ou a lista de IPs do host.
 6. **Deploy.** A URL fica tipo `pdv-memphis.vercel.app`.
-7. Primeiro acesso: trocar a senha do admin padrão.
+7. Primeiro acesso: trocar a senha do admin padrão e gerar o crachá de acesso total.
 
 > ⚠️ Antes do go-live, **rotacionar** a senha do MongoDB e o `CLOUDINARY_API_SECRET`
 > (passaram por chat). Ver [07 — Segurança](07-seguranca.md).
-
-## Hospedagem-alvo: Vercel (serverless)
-
-A aplicação Express será empacotada como **função serverless**. Pontos já resolvidos
-para esse modelo:
-- **Sem estado em memória:** autenticação por JWT, sem `MemoryStore`.
-- **Sem disco:** arquivos no Cloudinary.
-- **Upload não passa pela função:** vai direto do navegador pro Cloudinary (contorna o
-  limite de ~4,5 MB de corpo das funções).
-- **ZIP grande:** migra para o navegador (JSZip) no passo C3 — evita o timeout das funções.
-- **Conexão Mongo cacheada** entre invocações.
 
 ## Variáveis de ambiente
 
@@ -78,16 +82,21 @@ para esse modelo:
 | `CLOUDINARY_API_SECRET` | API secret (NUNCA exposto ao cliente) |
 | `SESSION_SECRET` | Segredo para assinar o JWT |
 | `NODE_ENV` | `production` ativa o cookie `secure` |
+| `PORT` / `HOST` | Porta/host do listen (Discloud exige 8080 + 0.0.0.0 — já é o padrão) |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` | SMTP do email de redefinição de senha (ex: Gmail App Password) |
+| `MAIL_FROM` | Remetente do email de redefinição |
+| `APP_URL` | URL pública do app (usada no link de redefinição) |
 
-> Em produção, configurar todas no painel da Vercel (Project → Settings → Environment Variables).
-> **Nunca** comitar o `.env`.
+> Sem SMTP configurado, o "esqueci minha senha" funciona em modo dev (mostra o link
+> na resposta, só fora de produção). **Nunca** comitar o `.env`.
 
 ## Rodar localmente
 
 ```bash
 npm install
 # criar .env com as variáveis acima
-node server.js          # http://localhost:3000
+node server.js               # produção local — http://localhost:8080
+node tools/dev-preview.js    # desenvolvimento — porta 3000, SEMPRE no banco de teste
 ```
 
 No primeiro boot o servidor conecta no Mongo, cria índices e semeia
@@ -97,17 +106,30 @@ admin + promotores/grupos/clientes.
 
 | Tarefa | Como |
 |--------|------|
-| Acesso admin inicial | `admin@local` / `admin123` (trocar) |
-| Reimportar dados das planilhas | `node tools/importar-planilhas.js` (ajustar caminhos no topo) |
-| Rodar regressão | subir com `MONGO_DB=memphis_pdv_test` e `node test/smoke.js` |
+| Acesso admin inicial | `admin@local` / `admin123` (trocar) — tem acesso total |
+| Dar/tirar permissões de um admin | Painel → Contas → 🔐 Permissões (precisa de acesso total) |
+| Acesso total pra outra conta | Gerar/validar o **crachá** (Painel → Contas) |
+| **Criar contas em massa** | Painel → Contas → **📥 Criar por planilha** (.xlsx com Nome + E-mail; máx 500/vez) — ou `node tools/criar-promotores.js arquivo.xlsx [--dry]` pra cargas maiores |
+| Reimportar dados das planilhas (seed) | `node tools/importar-planilhas.js` (ajustar caminhos no topo) |
+| Rodar regressão | `node tools/dev-preview.js` + `node test/smoke.js` (banco de teste) |
+| Rodar pentest | `node test/pentest.js` (banco de teste **limpo** — não rodar em cima do smoke) |
+| Teste de carga | `node test/carga.js --vus=5000 --logins=500 --port=3000` |
 | Trocar senha da campanha | Painel → Listas → Senhas atuais |
 | Limpar lote após baixar | Painel → Fotos → "Limpar baixados" (apaga Mongo + Cloudinary) |
+| Excluir uma foto específica | Painel → Fotos → 🗑 na própria foto |
 
 ## Capacidade (escala ~1.4k promotores)
 
-- **MongoDB Atlas free (M0, 512 MB):** suficiente — guarda só texto, e o fluxo de
-  "baixar e limpar" mantém o volume baixo.
+Medida com `test/carga.js` (5.000 usuários simultâneos):
+
+- **Não cai**: pico de ~346 MB de RAM (< 512 MB do plano Discloud), graças ao portão de
+  concorrência (300 ativos + fila 8.000 + 503), cache de usuário, referência pré-gzipada
+  compartilhada e bcrypt assíncrono.
+- **O gargalo é o Atlas M0 grátis** (~60 req/s sustentado; estrangula depois de rajadas).
+  Com ~300 simultâneos — pico realista de 1.4k promotores — responde em 1,5–2,5s.
+  Pra rajadas de milhares *rápidas*, o upgrade é o tier do Atlas, não o app.
+- **MongoDB Atlas free (M0, 512 MB):** suficiente em volume — guarda só texto, e o fluxo
+  de "baixar e limpar" mantém o banco pequeno.
 - **Cloudinary free (25 GB):** folgado para o ciclo, ainda mais com a compressão
   no navegador (~150–400 KB por foto) e a limpeza por lote.
-- **Pico real é baixo:** envios são pingados ao longo do dia, não simultâneos.
-- O único processo pesado (ZIP grande) é raro e do lado da equipe — resolvido no C3.
+- O processo pesado (ZIP grande) roda no **navegador da equipe**, não no servidor.
