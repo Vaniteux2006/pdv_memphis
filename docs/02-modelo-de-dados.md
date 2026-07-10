@@ -24,7 +24,7 @@ erDiagram
     string grupo
     string regiao "NE|CN|SP|SE|SUL"
     string setor
-    int    matricula "único quando presente, ou null"
+    int    matricula "único quando presente; 0 ou vazio = null (promotor não tem)"
     string resetTokenHash "sha256 do token de redefinição (1h, uso único)"
     string resetTokenExp "ISO"
     string createdAt "ISO"
@@ -101,7 +101,8 @@ Contas de acesso (admins e promotores).
   ou `['*']` (**acesso total**, obtido validando o crachá). Admin novo nasce **sem
   nenhuma** permissão, a menos que quem criou tenha acesso total.
 - Perfil: `telefone` (só dígitos), `grupo`, `regiao`, `setor`, `matricula`
-  (inteiro **único** entre as contas, ou `null`).
+  (inteiro **único** entre as contas, ou `null`; **`0` também vale como "sem matrícula"** —
+  promotor não tem — e vira `null`, sem travar duplicado).
 - Senha guardada como **hash bcrypt** — nunca em texto. Tokens de redefinição também
   só como hash (`resetTokenHash`, expira em 1h, uso único).
 

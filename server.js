@@ -333,7 +333,7 @@ app.get('/api/admin/users/import-template.xlsx', requireAuth, requirePerm('conta
     { h: 'Grupo', w: 24, nota: 'Opcional — ex: CALMON.' },
     { h: 'Região', w: 12, nota: 'Opcional — escolha na setinha: NE, CN, SP, SE ou SUL.' },
     { h: 'Setor', w: 22, nota: 'Opcional — ex: Trade Marketing.' },
-    { h: 'Matrícula', w: 12, nota: 'Opcional — número inteiro, não pode repetir entre contas.' },
+    { h: 'Matrícula', w: 12, nota: 'Opcional — número inteiro, não pode repetir entre contas. 0 ou em branco = sem matrícula (promotor não tem).' },
     { h: 'Tipo', w: 12, nota: 'Opcional — promotor (padrão) ou admin.' },
     { h: 'Senha', w: 18, nota: 'Opcional — em branco, vira a senha provisória PRIMEIRONOME+ano (troca obrigatória no 1º acesso).' },
   ];
