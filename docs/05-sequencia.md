@@ -116,7 +116,9 @@ sequenceDiagram
   actor Ad as Admin (navegador)
   participant S as Servidor
   participant DB as MongoDB
-  Ad->>Ad: seleciona o .xlsx (botão "Criar por planilha")
+  Ad->>S: GET /api/admin/users/import-template.xlsx (opcional)
+  S-->>Ad: modelo protegido (cabeçalho travado, células liberadas, dropdowns)
+  Ad->>Ad: preenche e seleciona o .xlsx (botão "Criar por planilha")
   Ad->>S: POST /api/admin/users/import { file: base64 }
   S->>S: ExcelJS lê a planilha e acha as colunas pelo cabeçalho
   loop cada linha (máx 500, deduplicada por e-mail)

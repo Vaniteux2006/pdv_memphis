@@ -109,7 +109,7 @@ admin + promotores/grupos/clientes.
 | Acesso admin inicial | `admin@local` / `admin123` (trocar) — tem acesso total |
 | Dar/tirar permissões de um admin | Painel → Contas → 🔐 Permissões (precisa de acesso total) |
 | Acesso total pra outra conta | Gerar/validar o **crachá** (Painel → Contas) |
-| **Criar contas em massa** | Painel → Contas → **📥 Criar por planilha** (.xlsx com Nome + E-mail; máx 500/vez) — ou `node tools/criar-promotores.js arquivo.xlsx [--dry]` pra cargas maiores |
+| **Criar contas em massa** | Painel → Contas → **⬇ Baixar modelo** (planilha travada, só o que dá pra preencher fica liberado) → preencher → **📥 Criar por planilha** (máx 500/vez). Aceita também .xlsx próprio com colunas Nome + E-mail. Cargas maiores: `node tools/criar-promotores.js arquivo.xlsx [--dry]` |
 | Reimportar dados das planilhas (seed) | `node tools/importar-planilhas.js` (ajustar caminhos no topo) |
 | Rodar regressão | `node tools/dev-preview.js` + `node test/smoke.js` (banco de teste) |
 | Rodar pentest | `node test/pentest.js` (banco de teste **limpo** — não rodar em cima do smoke) |

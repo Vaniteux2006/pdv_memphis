@@ -320,6 +320,53 @@ app.post('/api/admin/users/import', requireAuth, requirePerm('contas'), ah(async
     res.json({ criados, atualizados, erros });
   } catch (e) { res.status(400).json({ error: e.message }); }
 }));
+// modelo de planilha pro import: a planilha nasce PROTEGIDA — cabeçalho e estrutura
+// travados, só as células de preenchimento liberadas — com lista suspensa em Região e Tipo
+app.get('/api/admin/users/import-template.xlsx', requireAuth, requirePerm('contas'), ah(async (req, res) => {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'Memphis PDV';
+  const ws = wb.addWorksheet('Contas');
+  const COLS = [
+    { h: 'Nome', w: 34, nota: 'OBRIGATÓRIO — nome completo.' },
+    { h: 'E-mail', w: 32, nota: 'OBRIGATÓRIO — se o e-mail já tem conta, só o perfil é atualizado (a senha fica como está).' },
+    { h: 'Telefone', w: 18, nota: 'Opcional — (00) 00000 0000 ou só números.' },
+    { h: 'Grupo', w: 24, nota: 'Opcional — ex: CALMON.' },
+    { h: 'Região', w: 12, nota: 'Opcional — escolha na setinha: NE, CN, SP, SE ou SUL.' },
+    { h: 'Setor', w: 22, nota: 'Opcional — ex: Trade Marketing.' },
+    { h: 'Matrícula', w: 12, nota: 'Opcional — número inteiro, não pode repetir entre contas.' },
+    { h: 'Tipo', w: 12, nota: 'Opcional — promotor (padrão) ou admin.' },
+    { h: 'Senha', w: 18, nota: 'Opcional — em branco, vira a senha provisória PRIMEIRONOME+ano (troca obrigatória no 1º acesso).' },
+  ];
+  const header = ws.getRow(1);
+  COLS.forEach((c, i) => {
+    ws.getColumn(i + 1).width = c.w;
+    const cell = header.getCell(i + 1);
+    cell.value = c.h;
+    cell.note = c.nota;
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1C9CC0' } };
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    cell.alignment = { horizontal: 'center', vertical: 'middle' };
+  });
+  for (let r = 2; r <= IMPORT_MAX_LINHAS + 1; r++) {
+    const row = ws.getRow(r);
+    for (let c = 1; c <= COLS.length; c++) {
+      const cell = row.getCell(c);
+      cell.protection = { locked: false }; // com a planilha protegida, só estas células aceitam edição
+      if (c === 3 || c === 9) cell.numFmt = '@'; // telefone/senha como texto (não vira número)
+    }
+    row.getCell(5).dataValidation = { type: 'list', allowBlank: true, formulae: ['"NE,CN,SP,SE,SUL"'],
+      showErrorMessage: true, errorTitle: 'Região inválida', error: 'Use NE, CN, SP, SE ou SUL.' };
+    row.getCell(8).dataValidation = { type: 'list', allowBlank: true, formulae: ['"promotor,admin"'],
+      showErrorMessage: true, errorTitle: 'Tipo inválido', error: 'Use promotor ou admin.' };
+  }
+  ws.views = [{ state: 'frozen', ySplit: 1 }];
+  // sem senha: trava contra edição acidental, mas dá pra desproteger na aba Revisão se precisar
+  await ws.protect('', { selectLockedCells: true, selectUnlockedCells: true, formatColumns: true, formatRows: true, sort: true });
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', 'attachment; filename="modelo-contas-memphis.xlsx"');
+  await wb.xlsx.write(res);
+  res.end();
+}));
 // admin edita o perfil da conta (nome, email, grupo, região, telefone, setor, matrícula)
 app.patch('/api/admin/users/:id', requireAuth, requirePerm('contas'), ah(async (req, res) => {
   try {
