@@ -17,11 +17,13 @@
 
   <div class="login-wrap">
     <div class="card login-card">
-      <h1>Criar sua senha</h1>
-      <p class="muted">Primeiro acesso: troque a senha provisória por uma só sua.</p>
+      <h1 id="titulo">Criar sua senha</h1>
+      <p class="muted" id="subtitulo">Primeiro acesso: troque a senha provisória por uma só sua.</p>
       <form id="form">
-        <label>Senha provisória (a que você recebeu)</label>
-        <input id="atual" type="password" autocomplete="current-password" required />
+        <div id="bloco-atual">
+          <label>Senha provisória (a que você recebeu)</label>
+          <input id="atual" type="password" autocomplete="current-password" required />
+        </div>
         <label>Nova senha (mín. 6 caracteres)</label>
         <input id="nova" type="password" autocomplete="new-password" minlength="6" required />
         <label>Confirmar nova senha</label>
@@ -35,6 +37,14 @@
   <script src="/common.js"></script>
   <script>
     let role = 'promotor';
+    // ?primeiro=1: conta criada com senha "0" — boas-vindas, sem pedir a provisória
+    const primeiro = new URLSearchParams(location.search).get('primeiro') === '1';
+    if (primeiro) {
+      document.getElementById('titulo').textContent = 'Bem-vindo(a)! 👋';
+      document.getElementById('subtitulo').textContent = 'Sua conta foi criada — agora é só escolher a sua senha pra começar a usar.';
+      document.getElementById('bloco-atual').style.display = 'none';
+      document.getElementById('atual').required = false;
+    }
     (async () => {
       try {
         const me = await fetch('/api/me');
@@ -49,10 +59,10 @@
     document.getElementById('form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const err = document.getElementById('err'); err.textContent = '';
-      const a = document.getElementById('atual').value;
+      const a = primeiro ? '0' : document.getElementById('atual').value;
       const n = document.getElementById('nova').value, n2 = document.getElementById('nova2').value;
       if (n !== n2) { err.textContent = 'As senhas não conferem.'; return; }
-      if (n === a) { err.textContent = 'A nova senha precisa ser diferente da provisória.'; return; }
+      if (!primeiro && n === a) { err.textContent = 'A nova senha precisa ser diferente da provisória.'; return; }
       try {
         await api('/api/change-password', { method: 'POST', body: JSON.stringify({ currentPassword: a, newPassword: n }) });
         toast('Senha criada! Entrando...', 'ok');

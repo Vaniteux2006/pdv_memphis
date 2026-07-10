@@ -37,7 +37,10 @@ flowchart TD
 - Guardadas como **hash bcrypt** (custo 10). Nunca em texto, nunca logadas.
 - **Senhas provisórias** (contas criadas em massa/por planilha, ou redefinidas pelo
   admin) marcam `mustChangePassword` — o front força a troca no 1º login
-  (`trocar-senha.html`, via `/api/change-password`).
+  (`trocar-senha.html`, via `/api/change-password`). Senha **"0"** é a variante
+  "primeiro acesso": a pessoa entra com `0` e cria a própria senha numa tela de
+  boas-vindas. Mesmo risco da provisória por nome (ambas adivinháveis até o 1º login) —
+  aceito pro contexto interno; ver pendência de força de senha abaixo.
 - **Recuperação por email**: token de 32 bytes aleatórios; no banco fica só o **sha256**,
   expira em **1h** e é de **uso único**. Resposta do `/api/forgot-password` é sempre
   genérica (anti-enumeração de emails).

@@ -234,7 +234,9 @@ app.post('/api/admin/users', requireAuth, requirePerm('contas'), ah(async (req, 
     if (!email || !name || !password) return res.status(400).json({ error: 'Preencha email, nome e senha' });
     // só quem tem acesso total consegue já criar um admin COM permissões; senão nasce sem nenhuma
     const perms = db.temPerm(req.user, '*') ? permissions : [];
-    res.json(await db.createUser({ email, name, password, role, mustChangePassword, grupo, regiao, telefone, setor, matricula, permissions: perms }));
+    // senha "0" = a pessoa cria a própria senha no 1º acesso (tela de boas-vindas) — troca sempre obrigatória
+    res.json(await db.createUser({ email, name, password, role, mustChangePassword: mustChangePassword || password === '0',
+      grupo, regiao, telefone, setor, matricula, permissions: perms }));
   } catch (e) { res.status(400).json({ error: e.message }); }
 }));
 // importa contas em massa a partir de uma planilha .xlsx (arquivo em base64 no JSON).
@@ -335,7 +337,7 @@ app.get('/api/admin/users/import-template.xlsx', requireAuth, requirePerm('conta
     { h: 'Setor', w: 22, nota: 'Opcional — ex: Trade Marketing.' },
     { h: 'Matrícula', w: 12, nota: 'Opcional — número inteiro, não pode repetir entre contas. 0 ou em branco = sem matrícula (promotor não tem).' },
     { h: 'Tipo', w: 12, nota: 'Opcional — promotor (padrão) ou admin.' },
-    { h: 'Senha', w: 18, nota: 'Opcional — em branco, vira a senha provisória PRIMEIRONOME+ano (troca obrigatória no 1º acesso).' },
+    { h: 'Senha', w: 18, nota: 'Opcional — em branco, vira a senha provisória PRIMEIRONOME+ano (troca obrigatória no 1º acesso). "0" = a pessoa entra com 0 e CRIA a própria senha numa tela de boas-vindas.' },
   ];
   const header = ws.getRow(1);
   COLS.forEach((c, i) => {
