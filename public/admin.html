@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Memphis PDV — Painel</title>
+  <meta name="theme-color" content="#1c9cc0" />
+  <link rel="icon" href="/logo-memphis.webp" type="image/webp" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&family=Sacramento&display=swap" media="print" onload="this.media='all'" />
@@ -14,29 +16,30 @@
     <div class="brand-menu">
       <a class="brand" href="/"><img src="/logo-memphis.webp" alt="Memphis" class="brand-logo" /><span class="pdv-badge">PAINEL</span></a>
       <div class="brand-dropdown">
-        <a class="mi active" href="/admin.html">📊 Pesquisa de Preço <small>módulo atual</small></a>
+        <a class="mi active" href="/admin.html">📊 Campanha de PDV <small>módulo atual</small></a>
+        <span class="mi soon">🚧 Pesquisa de Preço <small>em breve</small></span>
         <span class="mi soon">🚧 RCA <small>em breve</small></span>
       </div>
     </div>
     <div class="topbar-right"><span class="who" id="who"></span> <button class="ghost" onclick="logout()">Sair</button></div>
   </div>
 
-  <div class="wrap">
-    <div class="tabs">
-      <button data-tab="fotos" class="active">Fotos</button>
-      <button data-tab="aprovar">Aprovar promotor <span id="pend-badge" class="pill warn hidden" style="margin-left:4px;">0</span></button>
-      <button data-tab="promotores">Contas de promotor</button>
-      <button data-tab="listas">Listas</button>
+  <main class="wrap">
+    <div class="tabs" role="tablist" aria-label="Seções do painel">
+      <button data-tab="fotos" class="active" role="tab" aria-selected="true">Fotos</button>
+      <button data-tab="aprovar" role="tab" aria-selected="false">Aprovar promotor <span id="pend-badge" class="pill warn hidden" style="margin-left:4px;">0</span></button>
+      <button data-tab="promotores" role="tab" aria-selected="false">Contas de promotor</button>
+      <button data-tab="listas" role="tab" aria-selected="false">Listas</button>
     </div>
 
     <!-- FOTOS -->
     <section id="tab-fotos">
       <div class="card">
         <div class="toolbar">
-          <input id="f-q" placeholder="🔎 buscar nome, cliente, endereço, grupo..." style="flex:1;min-width:200px;" />
-          <select id="f-regiao"><option value="">Todas regiões</option></select>
-          <select id="f-grupo"><option value="">Todos grupos</option></select>
-          <select id="f-status">
+          <input id="f-q" placeholder="🔎 buscar nome, cliente, endereço, grupo..." aria-label="Buscar fotos" style="flex:1;min-width:200px;" />
+          <select id="f-regiao" aria-label="Filtrar por região"><option value="">Todas regiões</option></select>
+          <select id="f-grupo" aria-label="Filtrar por grupo"><option value="">Todos grupos</option></select>
+          <select id="f-status" aria-label="Filtrar por status">
             <option value="">Todos status</option>
             <option value="novos">Não baixados</option>
             <option value="baixados">Já baixados</option>
@@ -51,7 +54,7 @@
           <button class="secondary" id="btn-excel">📊 Exportar Excel</button>
           <button class="danger" id="btn-purge">🗑 Limpar baixados</button>
         </div>
-        <div class="muted" id="empty">Nenhuma foto.</div>
+        <div class="muted empty" id="empty">🗂️ Nenhuma foto por aqui — ajuste os filtros ou aguarde novos envios.</div>
         <div class="grid" id="grid"></div>
       </div>
     </section>
@@ -71,21 +74,21 @@
       <div class="card">
         <h2>Criar conta de acesso</h2>
         <div class="row">
-          <div><label>Nome</label><input id="u-name" /></div>
-          <div><label>E-mail</label><input id="u-email" type="email" /></div>
-          <div><label>Senha</label><input id="u-pass" /></div>
-          <div><label>Tipo</label>
+          <div><label for="u-name">Nome</label><input id="u-name" /></div>
+          <div><label for="u-email">E-mail</label><input id="u-email" type="email" /></div>
+          <div><label for="u-pass">Senha</label><input id="u-pass" /></div>
+          <div><label for="u-role">Tipo</label>
             <select id="u-role"><option value="promotor">Promotor</option><option value="admin">Admin (acesso ao painel)</option></select>
           </div>
         </div>
         <div class="row" style="margin-top:8px;">
-          <div><label>Telefone</label><input id="u-tel" placeholder="(00) 00000 0000" inputmode="numeric" /></div>
-          <div><label>Grupo</label><input id="u-grupo" list="grupos-dl-adm" placeholder="ex: CALMON" /></div>
-          <div><label>Região</label><select id="u-regiao"><option value="">—</option></select></div>
+          <div><label for="u-tel">Telefone</label><input id="u-tel" placeholder="(00) 00000 0000" inputmode="numeric" /></div>
+          <div><label for="u-grupo">Grupo</label><input id="u-grupo" list="grupos-dl-adm" placeholder="ex: CALMON" /></div>
+          <div><label for="u-regiao">Região</label><select id="u-regiao"><option value="">—</option></select></div>
         </div>
         <div class="row" style="margin-top:8px;">
-          <div><label>Setor</label><input id="u-setor" placeholder="ex: Trade Marketing" /></div>
-          <div><label>Matrícula</label><input id="u-matricula" type="number" min="0" step="1" placeholder="ex: 4021" /></div>
+          <div><label for="u-setor">Setor</label><input id="u-setor" placeholder="ex: Trade Marketing" /></div>
+          <div><label for="u-matricula">Matrícula</label><input id="u-matricula" type="number" min="0" step="1" placeholder="ex: 4021" /></div>
         </div>
         <datalist id="grupos-dl-adm"></datalist>
         <button id="u-create" style="margin-top:12px;">Criar conta</button>
@@ -109,7 +112,7 @@
         <div id="cracha-gerar" class="hidden">
           <button id="btn-gerar-cracha">Gerar novo crachá</button>
           <div id="cracha-out" class="hidden" style="margin-top:10px;">
-            <label>Código (anote — só aparece agora)</label>
+            <label for="cracha-codigo">Código (anote — só aparece agora)</label>
             <input id="cracha-codigo" readonly onclick="this.select()" />
             <button class="secondary" id="btn-baixar-cracha" style="margin-top:8px;">⬇ Baixar arquivo do crachá</button>
           </div>
@@ -117,10 +120,10 @@
         <div id="cracha-validar" class="hidden">
           <p class="muted">Sua conta <b>não tem acesso total</b>. Se você tem o crachá, valide aqui:</p>
           <div class="row">
-            <div style="flex:1;"><input id="cracha-input" placeholder="cole o código do crachá (MPDV-...)" /></div>
+            <div style="flex:1;"><input id="cracha-input" placeholder="cole o código do crachá (MPDV-...)" aria-label="Código do crachá" /></div>
             <div style="flex:0;"><button id="btn-validar-cracha">Validar</button></div>
           </div>
-          <label style="margin-top:8px;">ou envie o arquivo do crachá</label>
+          <label for="cracha-file" style="margin-top:8px;">ou envie o arquivo do crachá</label>
           <input type="file" id="cracha-file" accept=".json,.txt" />
         </div>
       </div>
@@ -128,9 +131,9 @@
       <div class="card">
         <h2>Contas (<span id="u-count">0</span>)</h2>
         <div class="toolbar">
-          <input id="u-search" placeholder="🔎 filtrar por nome, email, setor, matrícula..." style="flex:1;min-width:200px;" />
-          <select id="u-f-regiao"><option value="">Todas regiões</option></select>
-          <select id="u-f-grupo"><option value="">Todos grupos</option></select>
+          <input id="u-search" placeholder="🔎 filtrar por nome, email, setor, matrícula..." aria-label="Filtrar contas" style="flex:1;min-width:200px;" />
+          <select id="u-f-regiao" aria-label="Filtrar contas por região"><option value="">Todas regiões</option></select>
+          <select id="u-f-grupo" aria-label="Filtrar contas por grupo"><option value="">Todos grupos</option></select>
         </div>
         <div id="u-list"></div>
       </div>
@@ -141,26 +144,29 @@
       <div class="card">
         <h2>🔑 Senhas atuais (o que o promotor vê na hora de enviar)</h2>
         <div class="row">
-          <div><label>Senha Mensal</label><input id="cfg-sm" placeholder="ex: FEIJÃO" /></div>
-          <div><label>Senha Semanal</label><input id="cfg-ss" placeholder="ex: PIPOCA" /></div>
+          <div><label for="cfg-sm">Senha Mensal</label><input id="cfg-sm" placeholder="ex: FEIJÃO" /></div>
+          <div><label for="cfg-ss">Senha Semanal</label><input id="cfg-ss" placeholder="ex: PIPOCA" /></div>
         </div>
         <button id="cfg-save" style="margin-top:12px;">Salvar senhas</button>
       </div>
       <p class="muted">Banco de promotores da empresa: <b id="prom-total">0</b> nomes (usado pra checar quem envia).</p>
       <div class="row">
         <div class="card"><h2>Grupos</h2><div id="list-grupos"></div>
-          <div class="row" style="margin-top:10px;"><input id="add-grupos" placeholder="novo grupo" /><button data-add="grupos" style="flex:0;">+</button></div>
+          <div class="row" style="margin-top:10px;"><input id="add-grupos" placeholder="novo grupo" aria-label="Nome do novo grupo" /><button data-add="grupos" style="flex:0;" aria-label="Adicionar grupo">+</button></div>
         </div>
         <div class="card"><h2>Promotores (banco)</h2>
-          <input id="prom-search" placeholder="filtrar nome..." style="margin-bottom:8px;" />
+          <input id="prom-search" placeholder="filtrar nome..." aria-label="Filtrar promotores" style="margin-bottom:8px;" />
           <div id="list-promotores" style="max-height:300px;overflow:auto;"></div>
-          <div class="row" style="margin-top:10px;"><input id="add-promotores" placeholder="novo promotor" /><button data-add="promotores" style="flex:0;">+</button></div>
+          <div class="row" style="margin-top:10px;"><input id="add-promotores" placeholder="novo promotor" aria-label="Nome do novo promotor" /><button data-add="promotores" style="flex:0;" aria-label="Adicionar promotor">+</button></div>
         </div>
       </div>
     </section>
-  </div>
+  </main>
 
-  <div class="modal" id="modal" onclick="this.classList.remove('show')"><img id="modalimg" /></div>
+  <div class="modal" id="modal" role="dialog" aria-modal="true" aria-label="Foto ampliada" onclick="this.classList.remove('show')">
+    <button class="modal-close" aria-label="Fechar (Esc)">✕</button>
+    <img id="modalimg" alt="Foto ampliada" />
+  </div>
 
   <script src="/vendor/jszip.min.js"></script>
   <script src="/common.js"></script>
@@ -227,7 +233,10 @@
     // tabs
     function abrirAba(tab) {
       if (!eu(PERM_DA_ABA[tab])) return;
-      document.querySelectorAll('.tabs button').forEach((x) => x.classList.toggle('active', x.dataset.tab === tab));
+      document.querySelectorAll('.tabs button').forEach((x) => {
+        x.classList.toggle('active', x.dataset.tab === tab);
+        x.setAttribute('aria-selected', String(x.dataset.tab === tab));
+      });
       ['fotos', 'aprovar', 'promotores', 'listas'].forEach((t) =>
         document.getElementById('tab-' + t).classList.toggle('hidden', t !== tab));
       if (tab === 'aprovar') loadPendentes();

@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Memphis PDV — Entrar</title>
+  <meta name="theme-color" content="#1c9cc0" />
+  <link rel="icon" href="/logo-memphis.webp" type="image/webp" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&family=Sacramento&display=swap" media="print" onload="this.media='all'" />
@@ -20,11 +22,11 @@
       <h1>Identificação</h1>
       <p class="muted">Entre com o e-mail e senha que você recebeu.</p>
       <form id="form">
-        <label>E-mail</label>
+        <label for="email">E-mail</label>
         <input id="email" type="email" autocomplete="username" required />
-        <label>Senha</label>
+        <label for="password">Senha</label>
         <input id="password" type="password" autocomplete="current-password" required />
-        <div class="err" id="err"></div>
+        <div class="err" id="err" role="alert"></div>
         <button type="submit" style="width:100%; margin-top:8px;">Prosseguir</button>
       </form>
 
@@ -32,10 +34,10 @@
         <a href="#" id="forgot-link" style="font-size:13px;">Esqueci minha senha</a>
       </div>
       <form id="forgot-form" class="hidden" style="margin-top:12px;border-top:1px solid var(--line);padding-top:14px;">
-        <label>Seu e-mail</label>
+        <label for="forgot-email">Seu e-mail</label>
         <input id="forgot-email" type="email" required />
         <button type="submit" class="secondary" style="width:100%;margin-top:8px;">Enviar link de redefinição</button>
-        <div class="muted" id="forgot-msg" style="margin-top:10px;"></div>
+        <div class="muted" id="forgot-msg" aria-live="polite" style="margin-top:10px;"></div>
       </form>
     </div>
   </div>

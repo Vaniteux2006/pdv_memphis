@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Memphis PDV — Enviar fotos</title>
+  <meta name="theme-color" content="#1c9cc0" />
+  <link rel="icon" href="/logo-memphis.webp" type="image/webp" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&family=Sacramento&display=swap" media="print" onload="this.media='all'" />
@@ -14,14 +16,15 @@
     <div class="brand-menu">
       <a class="brand" href="/"><img src="/logo-memphis.webp" alt="Memphis" class="brand-logo" /><span class="pdv-badge">PDV</span></a>
       <div class="brand-dropdown">
-        <a class="mi active" href="/promotor.html">📊 Pesquisa de Preço <small>módulo atual</small></a>
+        <a class="mi active" href="/promotor.html">📊 Campanha de PDV <small>módulo atual</small></a>
+        <span class="mi soon">🚧 Pesquisa de Preço <small>em breve</small></span>
         <span class="mi soon">🚧 RCA <small>em breve</small></span>
       </div>
     </div>
     <div class="topbar-right"><span class="who" id="who"></span> <button class="ghost" onclick="logout()">Sair</button></div>
   </div>
 
-  <div class="wrap">
+  <main class="wrap">
     <div class="card">
       <h2>Enviar fotos</h2>
       <div id="senha-box" style="background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:12px;margin-bottom:14px;font-size:14px;">
@@ -29,30 +32,30 @@
         <div style="margin-top:6px;">🔑 Senha Mensal: <b id="sm-now">—</b> &nbsp;·&nbsp; Senha Semanal: <b id="ss-now">—</b></div>
       </div>
       <form id="form">
-        <label>Nome Completo do Promotor</label>
+        <label for="promotor">Nome Completo do Promotor</label>
         <input id="promotor" list="promotores-dl" autocomplete="off" required placeholder="digite seu nome completo" />
         <datalist id="promotores-dl"></datalist>
-        <div id="prom-status" class="muted" style="min-height:18px;margin-top:4px;"></div>
+        <div id="prom-status" class="muted" aria-live="polite" style="min-height:18px;margin-top:4px;"></div>
 
-        <label>Loja: Nome do Cliente</label>
+        <label for="cliente">Loja: Nome do Cliente</label>
         <input id="cliente" list="clientes-dl" autocomplete="off" required placeholder="ex: NOVO SURUBIM" />
         <datalist id="clientes-dl"></datalist>
 
-        <label>Localização da Loja (endereço)</label>
+        <label for="endereco">Localização da Loja (endereço)</label>
         <input id="endereco" autocomplete="off" required placeholder="rua, número, bairro, cidade" />
 
         <div class="row">
-          <div><label>Data da exposição</label><input id="dataExposicao" type="date" required /></div>
-          <div><label>Região</label><select id="regiao" required></select></div>
+          <div><label for="dataExposicao">Data da exposição</label><input id="dataExposicao" type="date" required /></div>
+          <div><label for="regiao">Região</label><select id="regiao" required></select></div>
         </div>
 
-        <label>Grupo</label>
+        <label for="grupo">Grupo</label>
         <input id="grupo" list="grupos-dl" autocomplete="off" placeholder="grupo do promotor (ex: PDV NE)" />
         <datalist id="grupos-dl"></datalist>
 
-        <label>Foto (1 imagem — ou 2 se for "antes e depois")</label>
+        <label for="fotos">Foto (1 imagem — ou 2 se for "antes e depois")</label>
         <input id="fotos" type="file" accept="image/*" capture="environment" multiple required />
-        <div class="muted" id="fileinfo" style="margin-top:6px;"></div>
+        <div class="muted" id="fileinfo" aria-live="polite" style="margin-top:6px;"></div>
 
         <button type="submit" id="send" style="margin-top:14px;">Enviar</button>
       </form>
@@ -60,7 +63,7 @@
 
     <div class="card">
       <h2>Minhas fotos enviadas</h2>
-      <div class="muted" id="myempty">Nada enviado ainda.</div>
+      <div class="muted empty" id="myempty">📷 Nada enviado ainda — sua primeira foto aparece aqui.</div>
       <div class="grid" id="mygrid"></div>
     </div>
 
@@ -68,9 +71,12 @@
       <div style="font-size:14px;">⚠️ Achou que houve algum engano ou equívoco na avaliação?
         Mande mensagem para <b>(55) 51 9893-6997</b>.</div>
     </div>
-  </div>
+  </main>
 
-  <div class="modal" id="modal" onclick="this.classList.remove('show')"><img id="modalimg" /></div>
+  <div class="modal" id="modal" role="dialog" aria-modal="true" aria-label="Foto ampliada" onclick="this.classList.remove('show')">
+    <button class="modal-close" aria-label="Fechar (Esc)">✕</button>
+    <img id="modalimg" alt="Foto ampliada" />
+  </div>
 
   <script src="/common.js"></script>
   <script>

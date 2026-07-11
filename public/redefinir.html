@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Memphis PDV — Redefinir senha</title>
+  <meta name="theme-color" content="#1c9cc0" />
+  <link rel="icon" href="/logo-memphis.webp" type="image/webp" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&family=Sacramento&display=swap" media="print" onload="this.media='all'" />
@@ -19,11 +21,11 @@
       <h1>Nova senha</h1>
       <p class="muted">Escolha uma nova senha para sua conta.</p>
       <form id="form">
-        <label>Nova senha (mín. 6 caracteres)</label>
+        <label for="senha">Nova senha (mín. 6 caracteres)</label>
         <input id="senha" type="password" autocomplete="new-password" minlength="6" required />
-        <label>Confirmar nova senha</label>
+        <label for="senha2">Confirmar nova senha</label>
         <input id="senha2" type="password" autocomplete="new-password" minlength="6" required />
-        <div class="err" id="err"></div>
+        <div class="err" id="err" role="alert"></div>
         <button type="submit" style="width:100%;margin-top:8px;">Redefinir senha</button>
       </form>
     </div>

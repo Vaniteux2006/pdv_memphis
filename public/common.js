@@ -30,6 +30,8 @@ function toast(msg, type = 'ok') {
   if (!el) {
     el = document.createElement('div');
     el.className = 'toast';
+    el.setAttribute('role', 'status');   // leitor de tela anuncia sem roubar o foco
+    el.setAttribute('aria-live', 'polite');
     document.body.appendChild(el);
   }
   el.textContent = msg;
@@ -62,6 +64,36 @@ async function logout() {
   await api('/api/logout', { method: 'POST' });
   location.href = '/';
 }
+
+// Esc fecha o modal de foto ampliada (acessibilidade por teclado)
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') document.querySelectorAll('.modal.show').forEach((m) => m.classList.remove('show'));
+});
+
+// todo campo de senha ganha um botão mostrar/ocultar (menos erro de digitação no celular)
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('input[type="password"]').forEach((inp) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'pw-wrap';
+    inp.parentNode.insertBefore(wrap, inp);
+    wrap.appendChild(inp);
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'pw-toggle';
+    btn.textContent = '👁';
+    btn.setAttribute('aria-label', 'Mostrar senha');
+    btn.setAttribute('aria-pressed', 'false');
+    btn.addEventListener('click', () => {
+      const mostrar = inp.type === 'password';
+      inp.type = mostrar ? 'text' : 'password';
+      btn.textContent = mostrar ? '🙈' : '👁';
+      btn.setAttribute('aria-label', mostrar ? 'Ocultar senha' : 'Mostrar senha');
+      btn.setAttribute('aria-pressed', String(mostrar));
+      inp.focus();
+    });
+    wrap.appendChild(btn);
+  });
+});
 
 // sobe um arquivo DIRETO no Cloudinary (com assinatura do nosso servidor) e
 // devolve { publicId, resourceType, bytes, originalName } pra registrar depois.

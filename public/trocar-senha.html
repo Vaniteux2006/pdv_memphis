@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Memphis PDV — Trocar senha</title>
+  <meta name="theme-color" content="#1c9cc0" />
+  <link rel="icon" href="/logo-memphis.webp" type="image/webp" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&family=Sacramento&display=swap" media="print" onload="this.media='all'" />
@@ -21,14 +23,14 @@
       <p class="muted" id="subtitulo">Primeiro acesso: troque a senha provisória por uma só sua.</p>
       <form id="form">
         <div id="bloco-atual">
-          <label>Senha provisória (a que você recebeu)</label>
+          <label for="atual">Senha provisória (a que você recebeu)</label>
           <input id="atual" type="password" autocomplete="current-password" required />
         </div>
-        <label>Nova senha (mín. 6 caracteres)</label>
+        <label for="nova">Nova senha (mín. 6 caracteres)</label>
         <input id="nova" type="password" autocomplete="new-password" minlength="6" required />
-        <label>Confirmar nova senha</label>
+        <label for="nova2">Confirmar nova senha</label>
         <input id="nova2" type="password" autocomplete="new-password" minlength="6" required />
-        <div class="err" id="err"></div>
+        <div class="err" id="err" role="alert"></div>
         <button type="submit" style="width:100%;margin-top:8px;">Salvar e entrar</button>
       </form>
     </div>
