@@ -439,6 +439,85 @@ app.delete('/api/admin/users/:id', requireAuth, requirePerm('contas'), ah(async 
 }));
 
 // ---------- admin: listas de referência (grupos/clientes/promotores) ----------
+// importa grupos/promotores em massa por planilha .xlsx (base64 no JSON, como o import de contas).
+// Acha as colunas "Grupos" e "Promotores" pelo cabeçalho (3 primeiras linhas de cada aba);
+// só ADICIONA nomes novos — não remove nem altera o que já está na lista.
+// PRECISA vir antes de /api/admin/ref/:type, senão "import" cai na rota genérica.
+const REF_IMPORT_MAX = 3000; // nomes por lista numa importação
+app.post('/api/admin/ref/import', requireAuth, requirePerm('listas'), ah(async (req, res) => {
+  try {
+    if (!req.body.file) return res.status(400).json({ error: 'Nenhum arquivo recebido' });
+    const wb = new ExcelJS.Workbook();
+    try { await wb.xlsx.load(Buffer.from(String(req.body.file), 'base64')); }
+    catch { return res.status(400).json({ error: 'Arquivo inválido — envie uma planilha .xlsx' }); }
+    const grupos = [], promotores = [];
+    // mesmo teto de varredura do import de contas: planilha gigante não trava o event loop
+    const MAX_VARRER = REF_IMPORT_MAX * 4;
+    let varridas = 0, demais = false;
+    for (const ws of wb.worksheets) {
+      if (demais) break;
+      let cols = {}, headerRow = 0;
+      for (let r = 1; r <= 3 && cols.grupos === undefined && cols.promotores === undefined; r++) {
+        cols = {};
+        const row = ws.getRow(r);
+        for (let c = 1; c <= 30; c++) {
+          const h = semAcento(celTxt(row.getCell(c).value)).toLowerCase().trim();
+          if (!h) continue;
+          if (cols.grupos === undefined && /grupo/.test(h)) cols.grupos = c;
+          if (cols.promotores === undefined && /promotor/.test(h)) cols.promotores = c;
+        }
+        headerRow = r;
+      }
+      if (cols.grupos === undefined && cols.promotores === undefined) continue; // aba sem as colunas
+      for (let r = headerRow + 1; r <= ws.actualRowCount; r++) {
+        if (grupos.length > REF_IMPORT_MAX || promotores.length > REF_IMPORT_MAX || ++varridas > MAX_VARRER) { demais = true; break; }
+        const row = ws.getRow(r);
+        const pega = (c) => celTxt(row.getCell(c).value).replace(/\s+/g, ' ').trim();
+        if (cols.grupos !== undefined) { const v = pega(cols.grupos); if (v) grupos.push(v); }
+        if (cols.promotores !== undefined) { const v = pega(cols.promotores); if (v) promotores.push(v); }
+      }
+    }
+    if (demais) return res.status(400).json({ error: `Planilha grande demais — o máximo é ${REF_IMPORT_MAX} nomes por lista numa importação. Divida em mais de um arquivo.` });
+    if (!grupos.length && !promotores.length) return res.status(400).json({ error: 'Não achei nomes — a planilha precisa de uma coluna "Grupos" e/ou "Promotores" no cabeçalho (3 primeiras linhas), com um nome por linha embaixo' });
+    res.json(await db.importRefItems({ grupos, promotores }));
+  } catch (e) { res.status(400).json({ error: e.message }); }
+}));
+// modelo de planilha pro import das listas: mesma pegada do modelo de contas —
+// nasce PROTEGIDA, cabeçalho travado com dica, só as células de preenchimento liberadas
+app.get('/api/admin/ref/import-template.xlsx', requireAuth, requirePerm('listas'), ah(async (req, res) => {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'Memphis PDV';
+  const ws = wb.addWorksheet('Listas');
+  const COLS = [
+    { h: 'Grupos', w: 30, nota: 'Um grupo por linha — ex: CALMON. O que já existe na lista é ignorado (nada é removido).' },
+    { h: 'Promotores', w: 38, nota: 'Um nome por linha — no banco fica em MAIÚSCULO. O que já existe é ignorado (nada é removido).' },
+  ];
+  const header = ws.getRow(1);
+  COLS.forEach((c, i) => {
+    ws.getColumn(i + 1).width = c.w;
+    const cell = header.getCell(i + 1);
+    cell.value = c.h;
+    cell.note = c.nota;
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1C9CC0' } };
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    cell.alignment = { horizontal: 'center', vertical: 'middle' };
+  });
+  for (let r = 2; r <= REF_IMPORT_MAX + 1; r++) {
+    const row = ws.getRow(r);
+    for (let c = 1; c <= COLS.length; c++) {
+      const cell = row.getCell(c);
+      cell.protection = { locked: false }; // com a planilha protegida, só estas células aceitam edição
+      cell.numFmt = '@'; // nome como texto (não vira número/data)
+    }
+  }
+  ws.views = [{ state: 'frozen', ySplit: 1 }];
+  // sem senha: trava contra edição acidental, mas dá pra desproteger na aba Revisão se precisar
+  await ws.protect('', { selectLockedCells: true, selectUnlockedCells: true, formatColumns: true, formatRows: true, sort: true });
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', 'attachment; filename="modelo-listas-memphis.xlsx"');
+  await wb.xlsx.write(res);
+  res.end();
+}));
 app.post('/api/admin/ref/:type', requireAuth, requirePerm('listas'), ah(async (req, res) => {
   try { res.json(await db.addRefItem(req.params.type, req.body.value)); }
   catch (e) { res.status(400).json({ error: e.message }); }

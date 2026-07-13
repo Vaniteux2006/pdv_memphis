@@ -149,6 +149,17 @@
         </div>
         <button id="cfg-save" style="margin-top:12px;">Salvar senhas</button>
       </div>
+      <div class="card">
+        <h2>📥 Atualizar listas por planilha</h2>
+        <button class="secondary" id="ref-import">📥 Atualizar por planilha</button>
+        <button class="secondary" id="ref-template">⬇ Baixar modelo</button>
+        <input type="file" id="ref-import-file" accept=".xlsx" class="hidden" />
+        <p class="muted" style="margin-top:8px;"><b>Baixe o modelo</b> — colunas <b>Grupos</b> e <b>Promotores</b>, um nome por linha
+          (pode preencher só uma das duas). A importação só <b>adiciona</b> o que ainda não está na lista — não remove nem altera nada;
+          nome repetido é ignorado e nome que estava aguardando aprovação é aprovado junto.
+          Também aceita planilha sua sem o modelo, desde que tenha uma coluna Grupos e/ou Promotores no cabeçalho.</p>
+        <div id="ref-import-result" class="hidden" style="margin-top:10px;"></div>
+      </div>
       <p class="muted">Banco de promotores da empresa: <b id="prom-total">0</b> nomes (usado pra checar quem envia).</p>
       <div class="row">
         <div class="card"><h2>Grupos</h2><div id="list-grupos"></div>
@@ -674,6 +685,39 @@
       const sel = document.getElementById('f-grupo'), atual = sel.value;
       sel.innerHTML = '<option value="">Todos grupos</option>' + ref.grupos.map((g) => `<option ${g === atual ? 'selected' : ''}>${esc(g)}</option>`).join('');
     }
+
+    // ---- atualizar listas por planilha ----
+    const refImpFile = document.getElementById('ref-import-file');
+    document.getElementById('ref-template').onclick = () => downloadFile('/api/admin/ref/import-template.xlsx');
+    document.getElementById('ref-import').onclick = () => refImpFile.click();
+    refImpFile.addEventListener('change', async () => {
+      const f = refImpFile.files[0]; refImpFile.value = '';
+      if (!f) return;
+      if (f.size > 700 * 1024) return toast('Arquivo muito grande (máx. 700KB) — deixe na planilha só as colunas necessárias', 'bad');
+      const btn = document.getElementById('ref-import');
+      btn.disabled = true; btn.textContent = '⏳ Importando...';
+      try {
+        const b64 = await new Promise((ok, err) => {
+          const r = new FileReader();
+          r.onload = () => ok(r.result.split(',')[1]);
+          r.onerror = () => err(new Error('Não consegui ler o arquivo'));
+          r.readAsDataURL(f);
+        });
+        const r = await api('/api/admin/ref/import', { method: 'POST', body: JSON.stringify({ file: b64 }) });
+        const box = document.getElementById('ref-import-result');
+        box.classList.remove('hidden');
+        box.innerHTML = `<b>Resultado:</b> Grupos: ${r.grupos.novos} novo(s), ${r.grupos.jaExistiam} já na lista · ` +
+          `Promotores: ${r.promotores.novos} novo(s), ${r.promotores.jaExistiam} já no banco.`;
+        toast(`${r.grupos.novos + r.promotores.novos} nome(s) adicionado(s)`, 'ok');
+        // recarrega a referência pra tudo refletir na hora (listas, filtros, contador)
+        ref = await api('/api/reference');
+        document.getElementById('prom-total').textContent = ref.promotores.length;
+        document.getElementById('grupos-dl-adm').innerHTML = ref.grupos.map((g) => `<option value="${esc(g)}">`).join('');
+        refreshGrupoFilter(); fillUserGrupoFilter();
+        renderLists();
+      } catch (e) { toast(e.message, 'bad'); }
+      btn.disabled = false; btn.textContent = '📥 Atualizar por planilha';
+    });
 
     document.getElementById('cfg-save').onclick = async () => {
       ref.senhas = await api('/api/admin/config', { method: 'PATCH', body: JSON.stringify({ senhaMensal: val('cfg-sm'), senhaSemanal: val('cfg-ss') }) });
