@@ -28,7 +28,7 @@
     <div class="tabs" role="tablist" aria-label="Seções do painel">
       <button data-tab="fotos" class="active" role="tab" aria-selected="true">Fotos</button>
       <button data-tab="aprovar" role="tab" aria-selected="false">Aprovar promotor <span id="pend-badge" class="pill warn hidden" style="margin-left:4px;">0</span></button>
-      <button data-tab="promotores" role="tab" aria-selected="false">Contas de promotor</button>
+      <button data-tab="promotores" role="tab" aria-selected="false">Contas de promotor <span id="contas-badge" class="pill warn hidden" style="margin-left:4px;">0</span></button>
       <button data-tab="listas" role="tab" aria-selected="false">Listas</button>
     </div>
 
@@ -219,6 +219,12 @@
       }
       if (eu('fotos')) loadPhotos();
       if (eu('aprovar')) loadPendentes();
+      if (eu('contas')) refreshContasBadge();
+    }
+
+    // badge de cadastros pendentes sem carregar a lista inteira de contas
+    async function refreshContasBadge() {
+      try { setContasBadge((await api('/api/admin/signup-count')).count); } catch {}
     }
 
     // as opções do filtro de grupo das CONTAS: grupos oficiais + grupos que já estão em alguma conta
@@ -420,8 +426,15 @@
       document.getElementById(id).addEventListener('change', () => { editingId = null; permEditingId = null; renderUsers(); }));
     async function loadUsers() {
       usersCache = await api('/api/admin/users');
+      setContasBadge(usersCache.filter((u) => u.pendingApproval).length);
       fillUserGrupoFilter();
       renderUsers();
+    }
+    // badge de cadastros (sign up) aguardando aprovação na aba Contas
+    function setContasBadge(n) {
+      const b = document.getElementById('contas-badge');
+      b.textContent = n;
+      b.classList.toggle('hidden', !n);
     }
     function nomeRegiao(sigla) {
       const r = ref.regioes.find((x) => x.sigla === sigla);
@@ -439,14 +452,17 @@
       const fr = document.getElementById('u-f-regiao').value, fg = document.getElementById('u-f-grupo').value;
       const users = usersCache.filter((u) =>
         (!fr || u.regiao === fr) && (!fg || (u.grupo || '') === fg) &&
-        [u.name, u.email, u.grupo, u.regiao, u.telefone, u.setor, u.matricula].join(' ').toLowerCase().includes(userFilter));
+        [u.name, u.email, u.grupo, u.regiao, u.telefone, u.setor, u.matricula].join(' ').toLowerCase().includes(userFilter))
+        .sort((a, b) => (b.pendingApproval ? 1 : 0) - (a.pendingApproval ? 1 : 0)); // cadastros novos primeiro
       document.getElementById('u-count').textContent = `${users.length}${users.length !== usersCache.length ? ' de ' + usersCache.length : ''}`;
       document.getElementById('u-list').innerHTML = users.map((u) => {
         if (u.id === editingId) return editPanel(u);
         if (u.id === permEditingId) return permPanel(u);
         const ehAdmin = u.role === 'admin';
+        const pendente = !ehAdmin && u.pendingApproval === true; // veio do cadastro público, aguardando aprovação
         const tag = ehAdmin ? '<span class="pill" style="background:var(--teal-soft);color:var(--teal);border-color:transparent">admin</span>'
-          : (u.active === false ? '<span class="pill" style="color:var(--red)">banido</span>' : '');
+          : (pendente ? '<span class="pill warn">⏳ aguardando aprovação</span>'
+          : (u.active === false ? '<span class="pill" style="color:var(--red)">banido</span>' : ''));
         const perfil = [
           u.regiao && nomeRegiao(u.regiao), u.grupo, fmtTel(u.telefone),
           u.setor && 'Setor: ' + u.setor,
@@ -459,11 +475,15 @@
           ? `<button class="secondary" data-act="edit-user" data-id="${esc(u.id)}">✏️ Editar</button>
              ${btnPerm}
              <button class="secondary" data-act="reset-pass" data-id="${esc(u.id)}">Nova senha</button>`
+          : pendente
+          ? `<button data-act="aprovar-conta" data-id="${esc(u.id)}" data-nome="${esc(u.name)}">✓ Aprovar</button>
+             <button class="danger" data-act="recusar-conta" data-id="${esc(u.id)}" data-nome="${esc(u.name)}">✗ Recusar</button>
+             <button class="secondary" data-act="edit-user" data-id="${esc(u.id)}">✏️ Editar</button>`
           : `<button class="secondary" data-act="edit-user" data-id="${esc(u.id)}">✏️ Editar</button>
              <button class="${u.active === false ? '' : 'danger'}" data-act="toggle-ban" data-id="${esc(u.id)}" data-nome="${esc(u.name)}" data-banido="${u.active === false ? 1 : 0}">${u.active === false ? 'Desbanir' : '🚫 Banir'}</button>
              <button class="secondary" data-act="reset-pass" data-id="${esc(u.id)}">Nova senha</button>
              <button class="ghost" data-act="del-user" data-id="${esc(u.id)}" data-nome="${esc(u.name)}">Excluir</button>`;
-        return `<div class="list-item" style="${u.active === false ? 'opacity:.6;' : ''}">
+        return `<div class="list-item" style="${pendente ? 'border-left:3px solid var(--amber,#d99a2b);' : (u.active === false ? 'opacity:.6;' : '')}">
           <span><b>${esc(u.name)}</b> — ${esc(u.email)} ${tag}${ehAdmin ? ' ' + pillsPermissoes(u) : ''}${perfil ? `<br><span class="muted" style="font-size:12px;">${esc(perfil)}</span>` : ''}</span>
           <span>${acoes}</span></div>`;
       }).join('') || '<div class="muted">Nenhuma conta.</div>';
@@ -535,6 +555,20 @@
           }),
         });
         toast('Perfil salvo ✓'); editingId = null; loadUsers();
+      } catch (e) { toast(e.message, 'bad'); }
+    }
+    // cadastro público: aprovar ativa a conta; recusar exclui
+    async function aprovarConta(id, name) {
+      try {
+        await api('/api/admin/users/' + id + '/active', { method: 'POST', body: JSON.stringify({ active: true }) });
+        toast(`Conta de ${name} aprovada ✓`); loadUsers();
+      } catch (e) { toast(e.message, 'bad'); }
+    }
+    async function recusarConta(id, name) {
+      if (!confirm(`Recusar o cadastro de ${name}? A conta será excluída.`)) return;
+      try {
+        await api('/api/admin/users/' + id, { method: 'DELETE' });
+        toast('Cadastro recusado'); loadUsers();
       } catch (e) { toast(e.message, 'bad'); }
     }
     async function toggleBan(id, name, banido) {
@@ -691,6 +725,7 @@
       if (document.hidden) return;
       if (eu('aprovar')) loadPendentes().catch(() => {});
       if (abaAtiva() === 'promotores' && eu('contas') && editingId === null && permEditingId === null) loadUsers().catch(() => {});
+      else if (eu('contas')) refreshContasBadge(); // fora da aba Contas, só a contagem (payload mínimo)
       if (abaAtiva() === 'fotos' && eu('fotos')) loadPhotos().catch(() => {});
     }, 10000);
     setInterval(async () => {
@@ -718,6 +753,8 @@
         case 'set-pago': return setField(d.id, 'pago', d.val === '1');
         case 'del-photo': return delPhoto(d.id);
         case 'toggle-ban': return toggleBan(d.id, d.nome, d.banido === '1');
+        case 'aprovar-conta': return aprovarConta(d.id, d.nome);
+        case 'recusar-conta': return recusarConta(d.id, d.nome);
         case 'edit-user': return editUser(d.id);
         case 'edit-perms': return editPerms(d.id);
         case 'save-perms': return savePerms(d.id);

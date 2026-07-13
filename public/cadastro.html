@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Memphis PDV — Criar conta</title>
+  <meta name="theme-color" content="#1c9cc0" />
+  <link rel="icon" href="/logo-memphis.webp" type="image/webp" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&family=Sacramento&display=swap" media="print" onload="this.media='all'" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="/"><img src="/logo-memphis.webp" alt="Memphis" class="brand-logo" /></a>
+    <a class="ghost" href="/login.html" style="padding:8px 16px;border:1px solid var(--line);border-radius:7px;color:var(--muted);font-size:13px;">Já tenho conta</a>
+  </header>
+
+  <div class="login-wrap">
+    <div class="card login-card" id="card">
+      <h1>Criar conta</h1>
+      <p class="muted">Cadastro de promotor. Depois de criar, um administrador aprova seu acesso — aí é só entrar.</p>
+      <form id="form">
+        <label for="name">Nome completo</label>
+        <input id="name" autocomplete="name" required maxlength="120" />
+        <label for="email">E-mail</label>
+        <input id="email" type="email" autocomplete="email" required maxlength="120" />
+        <label for="tel">Telefone <span class="muted" style="font-weight:400;">(opcional)</span></label>
+        <input id="tel" placeholder="(00) 00000 0000" inputmode="numeric" autocomplete="tel" />
+        <label for="regiao">Região <span class="muted" style="font-weight:400;">(opcional)</span></label>
+        <select id="regiao"><option value="">—</option></select>
+        <label for="grupo">Grupo <span class="muted" style="font-weight:400;">(opcional — ex: CALMON)</span></label>
+        <input id="grupo" maxlength="80" />
+        <label for="password">Senha (mínimo 6 caracteres)</label>
+        <input id="password" type="password" autocomplete="new-password" required minlength="6" />
+        <label for="password2">Confirmar senha</label>
+        <input id="password2" type="password" autocomplete="new-password" required minlength="6" />
+        <div class="err" id="err" role="alert"></div>
+        <button type="submit" id="btn" style="width:100%; margin-top:8px;">Criar conta</button>
+      </form>
+      <div style="text-align:center;margin-top:14px;">
+        <a href="/login.html" style="font-size:13px;">Já tem conta? Entrar</a>
+      </div>
+    </div>
+
+    <!-- sucesso: troca o formulário por esta mensagem -->
+    <div class="card login-card hidden" id="card-ok">
+      <h1>✅ Conta criada!</h1>
+      <p class="muted">Seu cadastro foi enviado e está <b>aguardando aprovação</b> de um administrador.
+        Assim que aprovarem, você já consegue entrar com o e-mail e a senha que acabou de criar.</p>
+      <a href="/login.html"><button type="button" style="width:100%;margin-top:8px;">Ir para o login</button></a>
+    </div>
+  </div>
+
+  <script src="/common.js"></script>
+  <script>
+    maskTel(document.getElementById('tel'));
+
+    // regiões vêm do servidor (mesma fonte do resto do app)
+    (async () => {
+      try {
+        const info = await (await fetch('/api/signup-info')).json();
+        document.getElementById('regiao').innerHTML = '<option value="">—</option>' +
+          info.regioes.map((r) => `<option value="${esc(r.sigla)}">${esc(r.nome)} (${esc(r.sigla)})</option>`).join('');
+      } catch {}
+    })();
+
+    document.getElementById('form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const err = document.getElementById('err');
+      err.textContent = '';
+      const pw = document.getElementById('password').value;
+      if (pw !== document.getElementById('password2').value) {
+        err.textContent = 'As senhas não conferem';
+        toast('As senhas não conferem', 'bad');
+        return;
+      }
+      const btn = document.getElementById('btn');
+      btn.disabled = true; btn.textContent = 'Enviando...';
+      try {
+        const res = await fetch('/api/signup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: document.getElementById('name').value,
+            email: document.getElementById('email').value,
+            telefone: document.getElementById('tel').value,
+            regiao: document.getElementById('regiao').value,
+            grupo: document.getElementById('grupo').value,
+            password: pw,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const msg = data.error || 'Não foi possível criar a conta. Tente de novo.';
+          err.textContent = msg;
+          toast(msg, 'bad');
+          return;
+        }
+        document.getElementById('card').classList.add('hidden');
+        document.getElementById('card-ok').classList.remove('hidden');
+      } catch {
+        err.textContent = 'Erro de conexão. Tente de novo.';
+        toast('Erro de conexão', 'bad');
+      } finally {
+        btn.disabled = false; btn.textContent = 'Criar conta';
+      }
+    });
+  </script>
+</body>
+</html>

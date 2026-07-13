@@ -89,6 +89,12 @@ const resetLimiter = rateLimit({
   standardHeaders: true, legacyHeaders: false,
   message: { error: 'Muitas solicitações. Tente de novo em alguns minutos.' },
 });
+// cadastro público (sign up): evita criação de conta em massa por IP
+const signupLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, max: 20,
+  standardHeaders: true, legacyHeaders: false,
+  message: { error: 'Muitos cadastros deste endereço. Tente de novo mais tarde.' },
+});
 
 // ---------- JWT (cookie httpOnly, sem sessão em memória — serverless-ready) ----------
 function setAuthCookie(res, user) {
@@ -133,10 +139,32 @@ const requirePerm = (perm) => (req, res, next) => {
 app.post('/api/login', loginLimiter, ah(async (req, res) => {
   const { email, password } = req.body;
   const u = await db.findUserByEmail(email || '');
-  if (!u || !u.active || !(await db.checkPassword(u, password || '')))
+  if (!u || !(await db.checkPassword(u, password || '')))
     return res.status(401).json({ error: 'E-mail ou senha incorretos' });
+  // cadastro público ainda não aprovado: avisa (só DEPOIS de conferir a senha, pra não vazar nada)
+  if (u.pendingApproval)
+    return res.status(403).json({ error: 'Sua conta ainda está aguardando aprovação de um administrador. Você será avisado quando liberar.' });
+  if (!u.active) return res.status(401).json({ error: 'E-mail ou senha incorretos' }); // banido: resposta genérica
   setAuthCookie(res, u);
   res.json({ role: u.role, name: u.name, mustChangePassword: !!u.mustChangePassword });
+}));
+
+// ---------- cadastro público (sign up) ----------
+// dados fixos que a tela de cadastro precisa antes do login (só constantes de domínio)
+app.get('/api/signup-info', (req, res) => res.json({ regioes: db.REGIOES }));
+
+// cria conta de PROMOTOR aguardando aprovação — um admin ativa na aba Contas.
+// role é sempre promotor (admin só nasce pelo painel); a pessoa já define a própria senha.
+app.post('/api/signup', signupLimiter, ah(async (req, res) => {
+  try {
+    const { name, email, password, telefone, grupo, regiao } = req.body;
+    if (!String(name || '').trim()) return res.status(400).json({ error: 'Informe seu nome completo' });
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim())) return res.status(400).json({ error: 'E-mail inválido' });
+    if (String(password || '').length < 6) return res.status(400).json({ error: 'A senha precisa de ao menos 6 caracteres' });
+    if (regiao && !db.REGIOES.some((r) => r.sigla === regiao)) return res.status(400).json({ error: 'Região inválida' });
+    await db.createUser({ email, name, password, role: 'promotor', telefone, grupo, regiao, pendingApproval: true });
+    res.json({ ok: true, pending: true });
+  } catch (e) { res.status(400).json({ error: e.message }); }
 }));
 app.post('/api/logout', (req, res) => { res.clearCookie(COOKIE, { path: '/' }); res.json({ ok: true }); });
 
@@ -228,6 +256,8 @@ app.delete('/api/admin/pendentes/:id', requireAuth, requirePerm('aprovar'), ah(a
 
 // ---------- admin: contas de promotor ----------
 app.get('/api/admin/users', requireAuth, requirePerm('contas'), ah(async (req, res) => res.json(await db.listUsers())));
+// contagem leve pro badge de cadastros aguardando aprovação (evita puxar a lista inteira no polling)
+app.get('/api/admin/signup-count', requireAuth, requirePerm('contas'), ah(async (req, res) => res.json({ count: await db.countPendingSignups() })));
 app.post('/api/admin/users', requireAuth, requirePerm('contas'), ah(async (req, res) => {
   try {
     const { email, name, password, role, mustChangePassword, grupo, regiao, telefone, setor, matricula, permissions } = req.body;
