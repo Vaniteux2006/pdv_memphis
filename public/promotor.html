@@ -53,11 +53,13 @@
         <input id="grupo" list="grupos-dl" autocomplete="off" placeholder="grupo do promotor (ex: PDV NE)" />
         <datalist id="grupos-dl"></datalist>
 
-        <label for="fotos">Foto (1 imagem — ou 2 se for "antes e depois")</label>
-        <input id="fotos" type="file" accept="image/*" capture="environment" multiple required />
+        <label>Fotos (1 imagem — ou 2 se for "antes e depois")</label>
+        <input id="fotos" type="file" accept="image/*" capture="environment" multiple hidden />
+        <div class="thumbs" id="thumbs"></div>
+        <button type="button" class="add-foto" id="addfoto">📷 Adicionar foto</button>
         <div class="muted" id="fileinfo" aria-live="polite" style="margin-top:6px;"></div>
 
-        <button type="submit" id="send" style="margin-top:14px;">Enviar</button>
+        <button type="submit" id="send" style="margin-top:14px;">Enviar fotos</button>
       </form>
     </div>
 
@@ -98,6 +100,7 @@
       document.getElementById('sm-now').textContent = ref.senhas.senhaMensal || '—';
       document.getElementById('ss-now').textContent = ref.senhas.senhaSemanal || '—';
       prefill();
+      renderThumbs(); // mostra a dica de quantas fotos dá pra mandar (limite vem do servidor)
       loadMine();
       setInterval(loadMine, 20000); // atualiza status/pré-avaliação a cada 20s
     }
@@ -158,16 +161,52 @@
       } catch (e) { toast(e.message, 'bad'); }
     };
 
+    // ---- fila de fotos: adiciona uma por vez, com "✕" pra tirar antes de enviar ----
     const fotos = document.getElementById('fotos');
+    const addBtn = document.getElementById('addfoto');
+    const thumbsEl = document.getElementById('thumbs');
+    let staged = [], enviando = false; // staged: { file, url }
+
+    addBtn.addEventListener('click', () => fotos.click());
+
     fotos.addEventListener('change', () => {
-      if (fotos.files.length > limite) {
-        toast(`Máximo ${limite} imagens por foto (2 = antes e depois)`, 'bad');
-        fotos.value = '';
-        document.getElementById('fileinfo').textContent = '';
-        return;
+      for (const file of Array.from(fotos.files)) {
+        if (staged.length >= limite) { toast(`Máximo ${limite} fotos por envio`, 'bad'); break; }
+        if (staged.some((s) => s.file.name === file.name && s.file.size === file.size && s.file.lastModified === file.lastModified)) {
+          toast('Essa foto já foi adicionada', 'bad'); continue;
+        }
+        staged.push({ file, url: URL.createObjectURL(file) });
       }
-      document.getElementById('fileinfo').textContent = fotos.files.length ? `${fotos.files.length} imagem(ns)` : '';
+      fotos.value = ''; // libera o input pra próxima escolha (senão o navegador substitui a anterior)
+      renderThumbs();
     });
+
+    thumbsEl.addEventListener('click', (e) => {
+      const x = e.target.closest('[data-rm]');
+      if (!x || enviando) return;
+      const [fora] = staged.splice(Number(x.dataset.rm), 1);
+      if (fora) URL.revokeObjectURL(fora.url);
+      renderThumbs();
+    });
+
+    function renderThumbs() {
+      thumbsEl.innerHTML = staged.map((s, i) =>
+        `<div class="thumb"><img src="${s.url}" alt="Foto ${i + 1}" /><button type="button" class="thumb-x" data-rm="${i}" aria-label="Tirar foto ${i + 1}">✕</button></div>`
+      ).join('');
+      const n = staged.length;
+      addBtn.classList.toggle('hidden', n >= limite);
+      addBtn.textContent = n ? '📷 Adicionar mais uma foto' : '📷 Adicionar foto';
+      document.getElementById('fileinfo').textContent =
+        n === 0 ? `Pode mandar até ${limite} fotos no mesmo envio (ex.: antes e depois).` :
+        n >= limite ? `${n} fotos prontas — confira e toque em "Enviar fotos".` :
+        `${n} foto adicionada — dá pra pôr mais ${limite - n} ou já enviar.`;
+    }
+
+    function clearStaged() {
+      staged.forEach((s) => URL.revokeObjectURL(s.url));
+      staged = [];
+      renderThumbs();
+    }
 
     async function compress(file) {
       if (!file.type.startsWith('image/')) return file;
@@ -185,16 +224,18 @@
 
     document.getElementById('form').addEventListener('submit', async (e) => {
       e.preventDefault();
+      if (!staged.length) { toast('Adicione pelo menos 1 foto antes de enviar', 'bad'); return; }
       if (!promOk && !promCadastrado && !confirm('O nome do promotor não foi confirmado no banco. Enviar mesmo assim?')) return;
       const btn = document.getElementById('send');
-      btn.disabled = true;
+      btn.disabled = true; addBtn.disabled = true;
+      enviando = true; thumbsEl.classList.add('sending'); // some o "✕": depois de enviar não dá mais pra tirar
       try {
         // 1) sobe cada foto DIRETO no Cloudinary (comprimindo antes)
         const fotosIds = [];
         let i = 0;
-        for (const file of fotos.files) {
-          btn.textContent = `Enviando imagem ${++i}/${fotos.files.length}...`;
-          fotosIds.push(await cloudinaryUpload(await compress(file), 'fotos'));
+        for (const s of staged) {
+          btn.textContent = `Enviando imagem ${++i}/${staged.length}...`;
+          fotosIds.push(await cloudinaryUpload(await compress(s.file), 'fotos'));
         }
         // 2) registra os metadados no nosso servidor
         btn.textContent = 'Finalizando...';
@@ -205,14 +246,17 @@
             regiao: val('regiao'), grupo: val('grupo'), promotor: val('promotor'), fotos: fotosIds,
           }),
         });
-        toast('Foto enviada!', 'ok');
+        toast('Fotos enviadas!', 'ok');
         e.target.reset(); promStatus.textContent = ''; promOk = false; promCadastrado = false;
         document.getElementById('dataExposicao').value = new Date().toISOString().slice(0, 10);
-        document.getElementById('fileinfo').textContent = '';
+        clearStaged();
         prefill();
         loadMine();
       } catch (ex) { toast(ex.message, 'bad'); }
-      finally { btn.disabled = false; btn.textContent = 'Enviar'; }
+      finally {
+        enviando = false; thumbsEl.classList.remove('sending');
+        btn.disabled = false; addBtn.disabled = false; btn.textContent = 'Enviar fotos';
+      }
     });
     const val = (id) => document.getElementById(id).value;
 

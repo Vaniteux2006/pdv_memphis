@@ -133,6 +133,29 @@ input[type="file"]::file-selector-button {
 }
 input[type="file"]:hover::file-selector-button { background: var(--teal-dark); }
 
+/* fila de fotos do promotor: miniaturas com "✕" pra tirar antes do envio */
+.thumbs { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+.thumbs:empty { display: none; }
+.thumb {
+  position: relative; width: 110px; height: 110px;
+  border-radius: var(--radius-sm); overflow: hidden;
+  border: 1px solid var(--line); box-shadow: var(--shadow-sm);
+}
+.thumb img { width: 100%; height: 100%; object-fit: cover; display: block; background: var(--bg-soft); }
+button.thumb-x {
+  position: absolute; top: 4px; right: 4px; width: 30px; height: 30px; padding: 0;
+  border-radius: 50%; background: rgba(26, 42, 52, .72); color: #fff;
+  font-size: 14px; line-height: 1;
+}
+button.thumb-x:hover { background: var(--red); }
+.thumbs.sending .thumb-x { display: none; }
+button.add-foto {
+  display: block; width: 100%; margin-top: 8px; padding: 12px;
+  background: var(--panel2); color: var(--teal-dark);
+  border: 1.5px dashed var(--teal); font-size: 14px;
+}
+button.add-foto:hover { background: var(--teal-soft); }
+
 /* campo de senha com botão mostrar/ocultar (montado pelo common.js) */
 .pw-wrap { position: relative; }
 .pw-wrap input { padding-right: 46px; }

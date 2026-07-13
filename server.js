@@ -35,7 +35,7 @@ app.use(helmet({
       scriptSrcAttr: ["'unsafe-inline'"], // e handlers inline (onclick/onchange/onload)
       styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
       fontSrc: ["'self'", 'https://fonts.gstatic.com'],
-      imgSrc: ["'self'", 'data:', 'https://res.cloudinary.com'],
+      imgSrc: ["'self'", 'data:', 'blob:', 'https://res.cloudinary.com'], // blob: = miniatura local antes do envio
       connectSrc: ["'self'", 'https://api.cloudinary.com', 'https://res.cloudinary.com'],
       objectSrc: ["'none'"],
       frameAncestors: ["'self'"],
