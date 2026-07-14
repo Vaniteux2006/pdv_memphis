@@ -169,6 +169,9 @@
           <input id="prom-search" placeholder="filtrar nome..." aria-label="Filtrar promotores" style="margin-bottom:8px;" />
           <div id="list-promotores" style="max-height:300px;overflow:auto;"></div>
           <div class="row" style="margin-top:10px;"><input id="add-promotores" placeholder="novo promotor" aria-label="Nome do novo promotor" /><button data-add="promotores" style="flex:0;" aria-label="Adicionar promotor">+</button></div>
+          <button class="danger" id="prom-clear" style="margin-top:10px;">🗑 Limpar banco inteiro</button>
+          <p class="muted" style="margin-top:6px;">Apaga <b>todos</b> os nomes do banco de uma vez (pede confirmação e baixa um backup .csv antes) —
+            útil pra recomeçar do zero e subir a lista nova por planilha.</p>
         </div>
       </div>
     </section>
@@ -685,6 +688,29 @@
       const sel = document.getElementById('f-grupo'), atual = sel.value;
       sel.innerHTML = '<option value="">Todos grupos</option>' + ref.grupos.map((g) => `<option ${g === atual ? 'selected' : ''}>${esc(g)}</option>`).join('');
     }
+
+    // ---- limpar o banco de promotores inteiro ----
+    document.getElementById('prom-clear').onclick = async () => {
+      const n = ref.promotores.length;
+      if (!n) return toast('O banco de promotores já está vazio', 'bad');
+      const resp = prompt(`⚠ Isso apaga TODOS os ${n} nomes do banco de promotores — sem volta.\n` +
+        'Um backup .csv com os nomes será baixado antes, por segurança.\n\nDigite APAGAR para confirmar:');
+      if ((resp || '').trim().toUpperCase() !== 'APAGAR') return;
+      // backup automático antes de apagar (BOM: acentos certos no Excel)
+      const csv = '\uFEFF' + 'Promotor\n' + ref.promotores.join('\n'); // BOM: acentos certos no Excel
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+      a.download = 'backup-promotores-' + new Date().toISOString().slice(0, 10) + '.csv';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      try {
+        const r = await api('/api/admin/ref/promotores/tudo', { method: 'DELETE' });
+        toast(`${r.apagados} nome(s) apagado(s) do banco`);
+        ref.promotores = [];
+        document.getElementById('prom-total').textContent = '0';
+        renderLists();
+      } catch (e) { toast(e.message, 'bad'); }
+    };
 
     // ---- atualizar listas por planilha ----
     const refImpFile = document.getElementById('ref-import-file');

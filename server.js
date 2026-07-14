@@ -518,6 +518,11 @@ app.get('/api/admin/ref/import-template.xlsx', requireAuth, requirePerm('listas'
   await wb.xlsx.write(res);
   res.end();
 }));
+// limpar o banco de promotores inteiro — o front confirma com texto digitado e baixa backup antes
+app.delete('/api/admin/ref/promotores/tudo', requireAuth, requirePerm('listas'), ah(async (req, res) => {
+  try { res.json(await db.clearPromotores()); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+}));
 app.post('/api/admin/ref/:type', requireAuth, requirePerm('listas'), ah(async (req, res) => {
   try { res.json(await db.addRefItem(req.params.type, req.body.value)); }
   catch (e) { res.status(400).json({ error: e.message }); }
