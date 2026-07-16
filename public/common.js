@@ -7,7 +7,11 @@ const PONTO_COR = {
   'Antes e depois': '#d6457f',            // rosa
   'Grande volume de produtos': '#3f6fd1', // azul
 };
-const corPonto = (p) => PONTO_COR[p] || 'var(--teal)';
+// ponto criado pelo admin (aba Listas) ganha cor da paleta pelo nome —
+// determinístico: o mesmo nome tem a mesma cor em qualquer página
+const PONTO_PALETA = ['#0e7a99', '#9c5bd1', '#1f7a3f', '#b85c1e', '#b23a68', '#2f55a4', '#8a6d3b', '#457a8b'];
+const corPonto = (p) => PONTO_COR[p] ||
+  PONTO_PALETA[[...String(p)].reduce((a, ch) => (a * 31 + ch.charCodeAt(0)) >>> 0, 7) % PONTO_PALETA.length];
 
 // helpers compartilhados
 async function api(url, opts = {}) {

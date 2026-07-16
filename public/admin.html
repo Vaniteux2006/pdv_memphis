@@ -164,6 +164,13 @@
           Também aceita planilha sua sem o modelo, desde que tenha uma coluna Grupos e/ou Promotores no cabeçalho.</p>
         <div id="ref-import-result" class="hidden" style="margin-top:10px;"></div>
       </div>
+      <div class="card">
+        <h2>⭐ Pontos extras da avaliação</h2>
+        <p class="muted">São as opções que aparecem na hora de avaliar uma foto. Remover um ponto <b>não mexe nas
+          fotos já avaliadas</b> com ele — só some das opções pra avaliações novas.</p>
+        <div id="list-pontos"></div>
+        <div class="row" style="margin-top:10px;"><input id="add-pontosExtra" placeholder="novo ponto extra (ex: Ponta de gôndola)" aria-label="Nome do novo ponto extra" /><button data-add="pontosExtra" style="flex:0;" aria-label="Adicionar ponto extra">+</button></div>
+      </div>
       <p class="muted">Banco de promotores da empresa: <b id="prom-total">0</b> nomes (usado pra checar quem envia).</p>
       <div class="row">
         <div class="card"><h2>Grupos</h2><div id="list-grupos"></div>
@@ -371,7 +378,7 @@
         const cor = PREAV_COR[p] || 'var(--teal)';
         return `<button class="${on ? '' : 'ghost'}" style="${on ? `background:${cor};border-color:transparent;color:#fff;` : ''}" data-act="gal-preav" data-id="${esc(s.id)}" data-val="${esc(p)}">${esc(p)}</button>`;
       }).join('');
-      const pontos = ref.pontosExtra.map((p) => {
+      const pontos = pontosDaFoto(s).map((p) => {
         const on = (s.pontosExtra || []).includes(p);
         const cor = on ? `background:${corPonto(p)};border-color:transparent;color:#fff;` : '';
         return `<button class="${on ? '' : 'ghost'}" style="font-size:12px;${cor}" data-act="tog-ponto" data-id="${esc(s.id)}" data-ponto="${esc(p)}" data-on="${on ? 1 : 0}">${esc(p)}</button>`;
@@ -417,8 +424,11 @@
       if (e.key === 'ArrowRight') galNav(1);
     });
 
+    // opções de ponto extra de uma foto: lista atual + pontos antigos que a foto já carrega
+    // (ponto removido da lista continua visível nas fotos que o receberam)
+    const pontosDaFoto = (s) => [...new Set([...ref.pontosExtra, ...(s.pontosExtra || [])])];
     function photoCard(s) {
-      const pontos = ref.pontosExtra.map((p) => {
+      const pontos = pontosDaFoto(s).map((p) => {
         const on = (s.pontosExtra || []).includes(p);
         const cor = on ? `background:${corPonto(p)};border-color:transparent;color:#fff;` : '';
         return `<button class="${on ? '' : 'ghost'}" style="padding:4px 8px;font-size:11px;${cor}" data-act="tog-ponto" data-id="${esc(s.id)}" data-ponto="${esc(p)}" data-on="${on ? 1 : 0}">${esc(p)}</button>`;
@@ -773,6 +783,9 @@
     function renderLists() {
       document.getElementById('cfg-sm').value = ref.senhas.senhaMensal || '';
       document.getElementById('cfg-ss').value = ref.senhas.senhaSemanal || '';
+      document.getElementById('list-pontos').innerHTML = ref.pontosExtra.map((v) =>
+        `<div class="list-item"><span><span class="ponto-dot" style="background:${corPonto(v)}"></span>${esc(v)}</span><button class="danger" data-act="del-item" data-type="pontosExtra" data-value="${esc(v)}">×</button></div>`).join('')
+        || '<div class="muted">Nenhum ponto extra cadastrado — a avaliação fica só com a nota.</div>';
       document.getElementById('list-grupos').innerHTML = ref.grupos.map((v) =>
         `<div class="list-item"><span>${esc(v)}</span><button class="danger" data-act="del-item" data-type="grupos" data-value="${esc(v)}">×</button></div>`).join('');
       const proms = ref.promotores.filter((p) => p.toLowerCase().includes(promFilter)).slice(0, 200);

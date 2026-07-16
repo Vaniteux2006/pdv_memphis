@@ -212,6 +212,9 @@ button:disabled { opacity: .5; cursor: not-allowed; transform: none; box-shadow:
 .tabs button.active { background: var(--teal); color: #fff; border-color: transparent; }
 .tabs button:hover:not(.active) { background: var(--bg-soft); color: var(--ink); }
 
+/* bolinha de cor do ponto extra (aba Listas) */
+.ponto-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; vertical-align: baseline; }
+
 /* sub-abas dentro da aba Fotos (a avaliar / aprovadas / recusadas) */
 .subtabs { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
 .subtabs button { background: #fff; color: var(--muted); border: 1px solid var(--line); box-shadow: var(--shadow-sm); }
