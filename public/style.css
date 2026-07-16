@@ -212,6 +212,26 @@ button:disabled { opacity: .5; cursor: not-allowed; transform: none; box-shadow:
 .tabs button.active { background: var(--teal); color: #fff; border-color: transparent; }
 .tabs button:hover:not(.active) { background: var(--bg-soft); color: var(--ink); }
 
+/* sub-abas dentro da aba Fotos (a avaliar / aprovadas / recusadas) */
+.subtabs { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+.subtabs button { background: #fff; color: var(--muted); border: 1px solid var(--line); box-shadow: var(--shadow-sm); }
+.subtabs button.active { background: var(--teal); color: #fff; border-color: transparent; }
+.subtabs button.active .pill { background: rgba(255, 255, 255, .22); color: #fff; border-color: transparent; }
+.subtabs button:hover:not(.active) { background: var(--bg-soft); color: var(--ink); }
+
+/* ---------- galeria de avaliação (uma foto por vez) ---------- */
+.gal-top { display: flex; align-items: center; justify-content: center; gap: 16px; margin-bottom: 10px; }
+.gal-seta { font-size: 24px; line-height: 1; padding: 4px 18px; }
+.gal-seta:disabled { opacity: .3; cursor: default; }
+.gal-imgs { display: flex; gap: 8px; justify-content: center; background: var(--bg-soft); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.gal-imgs img { max-height: 55vh; min-height: 180px; object-fit: contain; cursor: zoom-in; flex: 1 1 0; min-width: 0; }
+.gal-meta { color: var(--muted); font-size: 13px; line-height: 1.8; margin: 12px auto; text-align: center; max-width: 720px; }
+.gal-meta b { color: var(--ink); font-size: 15px; }
+.gal-aval { max-width: 640px; margin: 0 auto; }
+.gal-aval .toggles { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.gal-decisao { display: flex; gap: 10px; margin: 16px 0 10px; }
+.gal-decisao button { flex: 1; padding: 12px; font-size: 15px; }
+
 /* ---------- grid de fotos ---------- */
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
 .photo {

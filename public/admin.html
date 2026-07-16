@@ -35,26 +35,30 @@
     <!-- FOTOS -->
     <section id="tab-fotos">
       <div class="card">
+        <div class="subtabs" id="foto-subtabs" role="tablist" aria-label="Estado das fotos">
+          <button data-view="pendentes" class="active" role="tab" aria-selected="true">⏳ A avaliar <span class="pill warn" id="cnt-pendentes">0</span></button>
+          <button data-view="aprovadas" role="tab" aria-selected="false">✓ Aprovadas <span class="pill on" id="cnt-aprovadas">0</span></button>
+          <button data-view="recusadas" role="tab" aria-selected="false">✗ Recusadas <span class="pill" id="cnt-recusadas" style="color:var(--red)">0</span></button>
+        </div>
         <div class="toolbar">
           <input id="f-q" placeholder="🔎 buscar nome, cliente, endereço, grupo..." aria-label="Buscar fotos" style="flex:1;min-width:200px;" />
           <select id="f-regiao" aria-label="Filtrar por região"><option value="">Todas regiões</option></select>
           <select id="f-grupo" aria-label="Filtrar por grupo"><option value="">Todos grupos</option></select>
-          <select id="f-status" aria-label="Filtrar por status">
-            <option value="">Todos status</option>
-            <option value="novos">Não baixados</option>
-            <option value="baixados">Já baixados</option>
-            <option value="validados">Validados</option>
-            <option value="recusados">Recusados</option>
+          <select id="f-baixado" class="hidden" aria-label="Filtrar por download">
+            <option value="">Baixadas e não baixadas</option>
+            <option value="novos">Não baixadas</option>
+            <option value="baixados">Já baixadas</option>
           </select>
           <span class="count" id="count"></span>
         </div>
-        <div class="toolbar">
+        <div class="toolbar hidden" id="fotos-acoes">
           <button id="btn-download">⬇ Baixar ZIP (não baixados)</button>
           <button class="secondary" id="btn-download-all">ZIP de tudo</button>
           <button class="secondary" id="btn-excel">📊 Exportar Excel</button>
           <button class="danger" id="btn-purge">🗑 Limpar baixados</button>
         </div>
-        <div class="muted empty" id="empty">🗂️ Nenhuma foto por aqui — ajuste os filtros ou aguarde novos envios.</div>
+        <div id="galeria" class="hidden"></div>
+        <div class="muted empty hidden" id="empty">🗂️ Nenhuma foto por aqui.</div>
         <div class="grid" id="grid"></div>
       </div>
     </section>
@@ -302,18 +306,116 @@
     // ---- fotos ----
     let qTimer;
     document.getElementById('f-q').addEventListener('input', () => { clearTimeout(qTimer); qTimer = setTimeout(loadPhotos, 300); });
-    ['f-regiao', 'f-grupo', 'f-status'].forEach((id) => document.getElementById(id).addEventListener('change', loadPhotos));
+    ['f-regiao', 'f-grupo', 'f-baixado'].forEach((id) => document.getElementById(id).addEventListener('change', loadPhotos));
     const val = (id) => document.getElementById(id).value;
 
+    // sub-abas da aba Fotos: A avaliar (galeria foto-a-foto) / Aprovadas / Recusadas
+    let fotoView = 'pendentes', subsCache = [], galIdx = 0, galId = null;
+    const estadoDe = (s) => (s.validado === true ? 'aprovadas' : s.validado === false ? 'recusadas' : 'pendentes');
+    document.querySelectorAll('#foto-subtabs button').forEach((b) => b.addEventListener('click', () => {
+      fotoView = b.dataset.view;
+      document.querySelectorAll('#foto-subtabs button').forEach((x) => {
+        x.classList.toggle('active', x === b);
+        x.setAttribute('aria-selected', String(x === b));
+      });
+      renderFotos();
+    }));
+
     function query() {
-      return new URLSearchParams({ q: val('f-q'), regiao: val('f-regiao'), grupo: val('f-grupo'), status: val('f-status') });
+      return new URLSearchParams({ q: val('f-q'), regiao: val('f-regiao'), grupo: val('f-grupo') });
     }
     async function loadPhotos() {
-      const rows = await api('/api/admin/submissions?' + query());
-      document.getElementById('count').textContent = `${rows.length} foto(s)`;
-      document.getElementById('empty').classList.toggle('hidden', rows.length > 0);
-      document.getElementById('grid').innerHTML = rows.map(photoCard).join('');
+      subsCache = await api('/api/admin/submissions?' + query());
+      renderFotos();
     }
+    const pendentesAtuais = () => subsCache.filter((s) => estadoDe(s) === 'pendentes');
+    function renderFotos() {
+      // não re-renderiza por cima de quem está digitando uma observação (polling de 10s)
+      if (document.activeElement && document.activeElement.matches('#tab-fotos textarea')) return;
+      const por = { pendentes: [], aprovadas: [], recusadas: [] };
+      subsCache.forEach((s) => por[estadoDe(s)].push(s));
+      ['pendentes', 'aprovadas', 'recusadas'].forEach((v) => (document.getElementById('cnt-' + v).textContent = por[v].length));
+      let rows = por[fotoView];
+      if (fotoView === 'aprovadas' && val('f-baixado')) rows = rows.filter((s) => s.baixado === (val('f-baixado') === 'baixados'));
+      const galeria = fotoView === 'pendentes';
+      document.getElementById('f-baixado').classList.toggle('hidden', fotoView !== 'aprovadas');
+      document.getElementById('fotos-acoes').classList.toggle('hidden', fotoView !== 'aprovadas');
+      document.getElementById('galeria').classList.toggle('hidden', !galeria || !rows.length);
+      document.getElementById('grid').classList.toggle('hidden', galeria);
+      document.getElementById('count').textContent = `${rows.length} foto(s)`;
+      const vazio = {
+        pendentes: '🎉 Nenhuma foto aguardando avaliação!',
+        aprovadas: '🗂️ Nenhuma foto aprovada por aqui — ajuste os filtros ou avalie as pendentes.',
+        recusadas: '🗂️ Nenhuma foto recusada por aqui.',
+      };
+      document.getElementById('empty').textContent = vazio[fotoView];
+      document.getElementById('empty').classList.toggle('hidden', rows.length > 0);
+      if (galeria) renderGaleria(rows);
+      else document.getElementById('grid').innerHTML = rows.map(photoCard).join('');
+    }
+
+    // galeria: uma foto por vez, setas pros lados, avaliação embaixo
+    function renderGaleria(rows) {
+      const box = document.getElementById('galeria');
+      if (!rows.length) { box.innerHTML = ''; galId = null; return; }
+      // segue a mesma foto se ela ainda está pendente; se saiu (aprovada/recusada), a próxima entra no lugar
+      const i = rows.findIndex((s) => s.id === galId);
+      galIdx = i >= 0 ? i : Math.min(galIdx, rows.length - 1);
+      const s = rows[galIdx];
+      galId = s.id;
+      const nImgs = (s.imagens && s.imagens.length) || 1;
+      const imgs = Array.from({ length: nImgs }, (_, k) =>
+        `<img src="/api/file/${esc(s.id)}/${k}" alt="Foto ${k + 1} de ${esc(s.cliente)}" data-act="zoom" data-id="${esc(s.id)}" data-idx="${k}" />`).join('');
+      const preav = ref.preAvaliacoes.map((p) => {
+        const on = s.preAvaliacao === p;
+        const cor = PREAV_COR[p] || 'var(--teal)';
+        return `<button class="${on ? '' : 'ghost'}" style="${on ? `background:${cor};border-color:transparent;color:#fff;` : ''}" data-act="gal-preav" data-id="${esc(s.id)}" data-val="${esc(p)}">${esc(p)}</button>`;
+      }).join('');
+      const pontos = ref.pontosExtra.map((p) => {
+        const on = (s.pontosExtra || []).includes(p);
+        const cor = on ? `background:${corPonto(p)};border-color:transparent;color:#fff;` : '';
+        return `<button class="${on ? '' : 'ghost'}" style="font-size:12px;${cor}" data-act="tog-ponto" data-id="${esc(s.id)}" data-ponto="${esc(p)}" data-on="${on ? 1 : 0}">${esc(p)}</button>`;
+      }).join('');
+      const dataExp = s.dataExposicao ? new Date(s.dataExposicao + 'T00:00').toLocaleDateString('pt-BR') : '—';
+      box.innerHTML = `
+        <div class="gal-top">
+          <button class="ghost gal-seta" data-act="gal-nav" data-dir="-1" ${galIdx === 0 ? 'disabled' : ''} aria-label="Foto anterior (←)">‹</button>
+          <span class="count">Foto ${galIdx + 1} de ${rows.length}</span>
+          <button class="ghost gal-seta" data-act="gal-nav" data-dir="1" ${galIdx === rows.length - 1 ? 'disabled' : ''} aria-label="Próxima foto (→)">›</button>
+        </div>
+        <div class="gal-imgs">${imgs}</div>
+        <div class="gal-meta">
+          <b>${esc(s.cliente)}</b> · ${esc(s.regiao)}${s.grupo ? ' · ' + esc(s.grupo) : ''} · 📍 ${esc(s.endereco || '—')}<br>
+          👤 ${esc(s.promotor)} ${s.promotorNoBanco ? '<span class="pill on">no banco</span>' : '<span class="pill" style="color:var(--amber)">fora do banco</span>'}
+          · Exposição: ${dataExp} · SM: ${esc(s.senhaMensal)} · SS: ${esc(s.senhaSemanal)} · Enviado ${new Date(s.createdAt).toLocaleString('pt-BR')}
+        </div>
+        <div class="gal-aval">
+          <label>Pré-avaliação</label>
+          <div class="toggles">${preav}</div>
+          <label>Ponto extra</label>
+          <div class="toggles">${pontos}</div>
+          <div class="gal-decisao">
+            <button style="background:var(--green);" data-act="set-validado" data-id="${esc(s.id)}" data-val="1">✓ Aprovar foto</button>
+            <button class="danger" data-act="set-validado" data-id="${esc(s.id)}" data-val="0">✗ Recusar foto</button>
+          </div>
+          <textarea placeholder="observação (ex: motivo da recusa)..." data-act="set-obs" data-id="${esc(s.id)}">${esc(s.observacao)}</textarea>
+          <div style="text-align:right;margin-top:6px;"><button class="ghost" style="font-size:11px;color:var(--red);" data-act="del-photo" data-id="${esc(s.id)}">🗑 Excluir foto</button></div>
+        </div>`;
+    }
+    function galNav(dir) {
+      const rows = pendentesAtuais();
+      const novo = galIdx + dir;
+      if (novo < 0 || novo >= rows.length) return;
+      galIdx = novo; galId = rows[novo].id;
+      renderFotos();
+    }
+    // setas do teclado navegam a galeria (fora de campos de texto)
+    document.addEventListener('keydown', (e) => {
+      if (abaAtiva() !== 'fotos' || fotoView !== 'pendentes') return;
+      if (/^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement || {}).tagName)) return;
+      if (e.key === 'ArrowLeft') galNav(-1);
+      if (e.key === 'ArrowRight') galNav(1);
+    });
 
     function photoCard(s) {
       const pontos = ref.pontosExtra.map((p) => {
@@ -360,15 +462,19 @@
     const PREAV_COR = { REGULAR: 'var(--yellow)', BOM: 'var(--green)', EXCELENTE: 'var(--purple)' };
     async function setField(id, field, value) {
       await api('/api/admin/submissions/' + id, { method: 'PATCH', body: JSON.stringify({ [field]: value }) });
-      if (field === 'observacao') toast('Observação salva'); else loadPhotos();
+      const s = subsCache.find((x) => x.id === id);
+      if (s) s[field] = value; // cache em dia mesmo sem recarregar
+      if (field === 'observacao') return toast('Observação salva');
+      if (field === 'validado') toast(value ? 'Foto aprovada ✓' : 'Foto recusada', value ? 'ok' : 'bad');
+      renderFotos(); // o cache já está em dia; o polling de 10s sincroniza o resto
     }
     async function togPonto(id, ponto, add) {
-      const rows = await api('/api/admin/submissions?' + query());
-      const s = rows.find((x) => x.id === id);
-      let pontos = s.pontosExtra || [];
+      const s = subsCache.find((x) => x.id === id);
+      let pontos = (s && s.pontosExtra) || [];
       pontos = add ? [...pontos, ponto] : pontos.filter((p) => p !== ponto);
       await api('/api/admin/submissions/' + id, { method: 'PATCH', body: JSON.stringify({ pontosExtra: pontos }) });
-      loadPhotos();
+      if (s) s.pontosExtra = pontos;
+      renderFotos();
     }
     function zoom(id, idx) { document.getElementById('modalimg').src = '/api/file/' + id + '/' + (idx || 0); document.getElementById('modal').classList.add('show'); }
 
@@ -819,7 +925,18 @@
         case 'rejeitar-pend': return rejeitarPend(d.id);
         case 'tog-ponto': return togPonto(d.id, d.ponto, d.on === '0'); // on='0' → estava desligado, liga
         case 'zoom': return zoom(d.id, d.idx);
-        case 'set-validado': return setField(d.id, 'validado', d.val === '1');
+        case 'gal-nav': return galNav(Number(d.dir));
+        case 'gal-preav': { // clicar de novo na mesma nota desmarca
+          const s = subsCache.find((x) => x.id === d.id);
+          return setField(d.id, 'preAvaliacao', s && s.preAvaliacao === d.val ? '' : d.val);
+        }
+        case 'set-validado': {
+          if (d.val === '1') {
+            const s = subsCache.find((x) => x.id === d.id);
+            if (s && !s.preAvaliacao && !confirm('Aprovar sem pré-avaliação (Regular/Bom/Excelente)?')) return;
+          }
+          return setField(d.id, 'validado', d.val === '1');
+        }
         case 'set-pago': return setField(d.id, 'pago', d.val === '1');
         case 'del-photo': return delPhoto(d.id);
         case 'toggle-ban': return toggleBan(d.id, d.nome, d.banido === '1');

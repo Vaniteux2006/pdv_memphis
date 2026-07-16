@@ -107,7 +107,8 @@ async function uploadCloud(cookie, tipo, file, filename, ct) {
 
   // ---- admin cria outro admin ----
   const adminEmail = 'admin2_' + Date.now() + '@local';
-  const na = await req('POST', '/api/admin/users', { cookie: ac, body: { name: 'Admin 2', email: adminEmail, password: 'admin2pass', role: 'admin' } });
+  // admin novo nasce SEM permissões (modelo granular) — pro teste de acesso, já cria com 'aprovar'
+  const na = await req('POST', '/api/admin/users', { cookie: ac, body: { name: 'Admin 2', email: adminEmail, password: 'admin2pass', role: 'admin', permissions: ['aprovar'] } });
   ck('admin cria novo admin', na.status === 200 && J(na.body).role === 'admin', J(na.body).error || '');
   const ac2 = (await req('POST', '/api/login', { body: { email: adminEmail, password: 'admin2pass' } })).cookie;
   ck('novo admin loga e acessa o painel', !!ac2 && (await req('GET', '/api/admin/pendentes', { cookie: ac2 })).status === 200);
@@ -117,7 +118,8 @@ async function uploadCloud(cookie, tipo, file, filename, ct) {
   const ju = J((await req('GET', '/api/admin/users', { cookie: ac })).body).find((u) => u.email === 'joao@local');
   const up1 = await req('PATCH', '/api/admin/users/' + ju.id, { cookie: ac, body: { grupo: 'CALMON', regiao: 'NE', telefone: '(81) 99999-0000' } });
   const up1b = J(up1.body);
-  ck('admin edita perfil (grupo/região/telefone)', up1.status === 200 && up1b.grupo === 'CALMON' && up1b.regiao === 'NE' && up1b.telefone === '(81) 99999-0000', up1b.error || '');
+  // telefone é normalizado pra só dígitos no banco (o front formata na exibição)
+  ck('admin edita perfil (grupo/região/telefone)', up1.status === 200 && up1b.grupo === 'CALMON' && up1b.regiao === 'NE' && up1b.telefone === '81999990000', up1b.error || '');
   const meP = J((await req('GET', '/api/me', { cookie: pc })).body);
   ck('promotor vê o próprio perfil no /api/me', meP.grupo === 'CALMON' && meP.regiao === 'NE');
   ck('região inválida é recusada', (await req('PATCH', '/api/admin/users/' + ju.id, { cookie: ac, body: { regiao: 'XX' } })).status === 400);
