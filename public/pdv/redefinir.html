@@ -52,7 +52,7 @@
         const data = await res.json().catch(() => ({}));
         if (!res.ok) { err.textContent = data.error || 'Não foi possível redefinir.'; return; }
         toast('Senha redefinida! Entrando...', 'ok');
-        setTimeout(() => (location.href = '/login.html'), 1500);
+        setTimeout(() => (location.href = '/pdv/login.html'), 1500);
       } catch {
         err.textContent = 'Erro de conexão. Tente de novo.';
       }

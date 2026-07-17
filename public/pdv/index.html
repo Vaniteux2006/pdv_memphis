@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Memphis PDV — Pesquisa de Ponto de Venda</title>
+  <meta name="theme-color" content="#1c9cc0" />
+  <link rel="icon" href="/logo-memphis.webp" type="image/webp" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&family=Sacramento&display=swap" media="print" onload="this.media='all'" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="/"><img src="/logo-memphis.webp" alt="Memphis" class="brand-logo" /></a>
+    <a class="btn-cta" href="/pdv/login.html" style="padding:10px 28px;font-size:13px;">Entrar</a>
+  </header>
+
+  <main>
+  <section class="lp-hero">
+    <div class="lp-kicker">a essência do ponto de venda</div>
+    <h1>Pesquisa de Ponto de Venda</h1>
+    <p>A campanha oficial da Memphis que valoriza o seu trabalho no ponto de venda.
+       Envie as fotos da sua exposição direto do celular e acompanhe a avaliação de
+       cada envio — tudo num canal só, seguro e organizado.</p>
+    <a class="btn-cta" href="/pdv/cadastro.html">Participar da campanha</a>
+    <a class="btn-cta outline" href="/pdv/login.html">Já tenho conta</a>
+    <a class="btn-cta outline" href="#como">Como funciona</a>
+  </section>
+
+  <section class="lp-section">
+    <h2>Por que participar por aqui</h2>
+    <p class="sub">Chega de mandar foto no grupo e ficar sem resposta.</p>
+    <div class="features">
+      <div class="feature">
+        <div class="ic">📷</div>
+        <h3>Envio simples no celular</h3>
+        <p>Informe o cliente, confira a senha da semana e envie até 2 fotos — dá até pra mandar o antes e depois da exposição. Rápido, em qualquer celular.</p>
+      </div>
+      <div class="feature">
+        <div class="ic">🔍</div>
+        <h3>Avaliação transparente</h3>
+        <p>Cada foto recebe status e nota da equipe — Regular, Bom ou Excelente — além de pontos extras por Ilha, Display, Gôndola de caixa, Cross e Antes e depois. Tudo registrado na própria foto.</p>
+      </div>
+      <div class="feature">
+        <div class="ic">🔒</div>
+        <h3>Seguro do início ao fim</h3>
+        <p>Conta individual aprovada pela equipe Memphis, senhas de campanha renovadas toda semana e fotos guardadas em nuvem — visíveis só pra você e pra equipe.</p>
+      </div>
+      <div class="feature">
+        <div class="ic">💬</div>
+        <h3>Canal direto com a equipe</h3>
+        <p>Achou que uma avaliação ficou equivocada? O contato da equipe da campanha fica na sua página — sem intermediário, sem foto perdida.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="steps" id="como">
+    <div class="lp-section">
+      <h2>Como funciona</h2>
+      <p class="sub">Da prateleira à avaliação em quatro passos.</p>
+      <div class="steps-grid">
+        <div class="step"><div class="num">1</div><h4>Crie sua conta</h4><p>Cadastre-se com seus dados — a equipe Memphis aprova seu acesso.</p></div>
+        <div class="step"><div class="num">2</div><h4>Monte a exposição</h4><p>Capriche no ponto de venda e registre com fotos direto do celular.</p></div>
+        <div class="step"><div class="num">3</div><h4>Envie pela plataforma</h4><p>Com os dados da loja e a senha da semana — leva menos de um minuto.</p></div>
+        <div class="step"><div class="num">4</div><h4>Acompanhe a avaliação</h4><p>Status, nota e pontos extras aparecem na sua página, foto por foto.</p></div>
+      </div>
+      <div style="text-align:center;margin-top:40px;">
+        <a class="btn-cta" href="/pdv/cadastro.html">Participar da campanha</a>
+      </div>
+    </div>
+  </section>
+  </main>
+
+  <footer class="lp-footer">
+    <div class="fbrand">memphis</div>
+    <div>Pesquisa de Ponto de Venda &middot; campanha oficial Memphis</div>
+    <div style="margin-top:8px;opacity:.8;">© <span id="ano"></span> Memphis &middot; Todos os direitos reservados</div>
+  </footer>
+
+  <script>document.getElementById('ano').textContent = new Date().getFullYear();</script>
+</body>
+</html>

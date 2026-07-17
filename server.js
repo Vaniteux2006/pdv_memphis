@@ -182,7 +182,7 @@ app.post('/api/forgot-password', resetLimiter, ah(async (req, res) => {
   const info = await db.createResetToken(req.body.email);
   if (info) {
     const base = process.env.APP_URL || `${req.headers['x-forwarded-proto'] || req.protocol}://${req.headers.host}`;
-    const link = `${base}/redefinir.html?token=${info.token}`;
+    const link = `${base}/pdv/redefinir.html?token=${info.token}`;
     await mailer.sendResetEmail(info.email, link, info.name);
     // dev (fora de produção e sem SMTP): devolve o link pra dar pra testar
     if (!isProd && !mailer.configured) return res.json({ ok: true, devLink: link });
@@ -237,8 +237,92 @@ app.get('/api/upload-signature', requireAuth, ah(async (req, res) => {
   res.json(store.signUpload({ folder }));
 }));
 
-// admin define as senhas atuais (mensal/semanal)
-app.patch('/api/admin/config', requireAuth, requirePerm('listas'), ah(async (req, res) => res.json(await db.setConfig(req.body))));
+// admin define as senhas atuais (mensal/semanal) — vira entrada programada com início hoje
+app.patch('/api/admin/config', requireAuth, requirePerm('listas'), ah(async (req, res) => {
+  try { res.json(await db.setConfig(req.body)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+}));
+// senhas programadas por data: {inicio -> senha} por tipo; o servidor escolhe a vigente sozinho
+app.get('/api/admin/senhas', requireAuth, requirePerm('listas'), ah(async (req, res) => res.json(await db.listSenhasProg())));
+app.post('/api/admin/senhas', requireAuth, requirePerm('listas'), ah(async (req, res) => {
+  try {
+    await db.addSenhaProg(req.body.tipo, req.body.inicio, req.body.senha);
+    res.json(await db.listSenhasProg());
+  } catch (e) { res.status(400).json({ error: e.message }); }
+}));
+app.delete('/api/admin/senhas', requireAuth, requirePerm('listas'), ah(async (req, res) => {
+  try {
+    await db.delSenhaProg(req.body.tipo, req.body.inicio);
+    res.json(await db.listSenhasProg());
+  } catch (e) { res.status(400).json({ error: e.message }); }
+}));
+// importa a planilha "LISTA DE SENHAS SEMANAIS" da equipe: tabela com a coluna da senha
+// (ex: "LISTA DE PRODUTOS") + "PERÍODO_INÍCIO" (data em que passa a valer). Se achar a
+// célula "Senha Atual do Mês", programa a mensal valendo a partir de hoje.
+app.post('/api/admin/senhas/import', requireAuth, requirePerm('listas'), ah(async (req, res) => {
+  try {
+    if (!req.body.file) return res.status(400).json({ error: 'Nenhum arquivo recebido' });
+    const wb = new ExcelJS.Workbook();
+    try { await wb.xlsx.load(Buffer.from(String(req.body.file), 'base64')); }
+    catch { return res.status(400).json({ error: 'Arquivo inválido — envie uma planilha .xlsx' }); }
+
+    // célula -> 'YYYY-MM-DD' (aceita data do Excel ou texto dd/mm/aaaa)
+    const celData = (v) => {
+      if (v instanceof Date && !isNaN(v)) return v.toISOString().slice(0, 10);
+      const m = celTxt(v).match(/(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})/);
+      if (!m) return null;
+      return `${m[3].length === 2 ? '20' + m[3] : m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+    };
+
+    const semanais = [];
+    let mensal = null, ignoradas = 0;
+    for (const ws of wb.worksheets) {
+      // cabeçalho da tabela nas 10 primeiras linhas: coluna da senha + coluna do início
+      let colSenha, colInicio, headerRow = 0;
+      for (let r = 1; r <= 10 && colInicio === undefined; r++) {
+        colSenha = colInicio = undefined;
+        const row = ws.getRow(r);
+        for (let c = 1; c <= 30; c++) {
+          const h = semAcento(celTxt(row.getCell(c).value)).toLowerCase();
+          if (!h) continue;
+          if (colInicio === undefined && /inicio/.test(h)) colInicio = c;
+          if (colSenha === undefined && /produto|senha|lista/.test(h) && !/periodo|mes\b/.test(h)) colSenha = c;
+        }
+        headerRow = r;
+      }
+      if (colSenha !== undefined && colInicio !== undefined) {
+        for (let r = headerRow + 1; r <= Math.min(ws.actualRowCount, headerRow + 300); r++) {
+          const row = ws.getRow(r);
+          const senha = celTxt(row.getCell(colSenha).value).replace(/\s+/g, ' ').trim();
+          const inicio = celData(row.getCell(colInicio).value);
+          if (!senha && !inicio) continue;      // linha em branco
+          if (!senha || !inicio) { ignoradas++; continue; } // meia-linha (data sem senha ou vice-versa)
+          semanais.push({ inicio, senha: senha.toUpperCase() });
+        }
+      }
+      // "Senha Atual do Mês": o valor fica na célula de baixo ou ao lado do rótulo
+      if (!mensal) {
+        busca:
+        for (let r = 1; r <= Math.min(ws.actualRowCount, 60); r++) {
+          const row = ws.getRow(r);
+          for (let c = 1; c <= 30; c++) {
+            const h = semAcento(celTxt(row.getCell(c).value)).toLowerCase();
+            if (!/senha (atual )?(do )?(mes|mensal)/.test(h)) continue;
+            const v = (celTxt(ws.getRow(r + 1).getCell(c).value) || celTxt(row.getCell(c + 1).value)).trim();
+            if (v) { mensal = v.toUpperCase(); break busca; }
+          }
+        }
+      }
+    }
+    if (!semanais.length && !mensal) {
+      return res.status(400).json({ error: 'Não achei a tabela de senhas — a planilha precisa de uma coluna com a senha ' +
+        '(ex: "LISTA DE PRODUTOS") e uma coluna "PERÍODO_INÍCIO" com a data em que cada senha começa a valer.' });
+    }
+    for (const s of semanais) await db.addSenhaProg('semanal', s.inicio, s.senha);
+    if (mensal) await db.addSenhaProg('mensal', db.hojeBR(), mensal);
+    res.json({ semanais, mensal, ignoradas, tabela: await db.listSenhasProg() });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+}));
 
 // promotor cadastra um nome novo (não está no banco) -> fila de aprovação
 app.post('/api/promotor-pendente', requireAuth, ah(async (req, res) => {
@@ -605,10 +689,20 @@ app.delete('/api/admin/submissions/:id', requireAuth, requirePerm('fotos'), ah(a
   res.json({ ok: true });
 }));
 
+// ---------- ranking ----------
+// admin marca 1º/2º/3º da edição (a exclusividade da posição é garantida no db)
+app.post('/api/admin/ranking', requireAuth, requirePerm('fotos'), ah(async (req, res) => {
+  try { res.json(await db.setRanking(req.body.id, req.body.pos)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+}));
+// página do ranking: qualquer usuário logado vê os vencedores e as edições passadas
+app.get('/api/ranking', requireAuth, ah(async (req, res) => res.json(await db.listRanking())));
+
 app.get('/api/file/:id/:idx?', requireAuth, ah(async (req, res) => {
   const s = await db.getSubmission(req.params.id);
   if (!s) return res.status(404).end();
-  if (req.user.role !== 'admin' && s.uploadedBy !== req.user.id) return res.status(403).end();
+  // foto vencedora de ranking é visível pra todo usuário logado (página do ranking)
+  if (req.user.role !== 'admin' && s.uploadedBy !== req.user.id && !(s.rankingPos >= 1)) return res.status(403).end();
   const imgs = imagensDe(s);
   const idx = Math.min(Math.max(parseInt(req.params.idx || '0', 10) || 0, 0), imgs.length - 1);
   if (!imgs[idx]) return res.status(404).end();

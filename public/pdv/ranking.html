@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Memphis PDV — Ranking</title>
+  <meta name="theme-color" content="#1c9cc0" />
+  <link rel="icon" href="/logo-memphis.webp" type="image/webp" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&family=Sacramento&display=swap" media="print" onload="this.media='all'" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="topbar">
+    <a class="brand" href="/"><img src="/logo-memphis.webp" alt="Memphis" class="brand-logo" /><span class="pdv-badge">RANKING</span></a>
+    <div class="topbar-right"><a id="voltar" href="/pdv/promotor.html" style="font-size:13px;">← Voltar</a></div>
+  </div>
+
+  <main class="wrap" style="max-width:960px;">
+    <div class="rk-hero">
+      <div class="lp-kicker">a essência do ponto de venda</div>
+      <h1>🏆 Ranking da campanha</h1>
+      <p class="muted">As melhores exposições de cada edição, escolhidas entre as fotos avaliadas como <b>Excelente</b>.</p>
+    </div>
+
+    <div class="muted empty hidden" id="rk-vazio" style="text-align:center;padding:40px 0;">
+      🏆 Os vencedores da primeira edição ainda não foram anunciados — capriche na exposição e fica de olho aqui!</div>
+    <div id="edicoes"></div>
+  </main>
+
+  <div class="modal" id="modal" role="dialog" aria-modal="true" aria-label="Foto ampliada" onclick="this.classList.remove('show')">
+    <button class="modal-close" aria-label="Fechar (Esc)">✕</button>
+    <img id="modalimg" alt="Foto ampliada" />
+  </div>
+
+  <script src="/common.js"></script>
+  <script>
+    const MEDALHA = { 1: '🥇', 2: '🥈', 3: '🥉' };
+    const nomeMes = (m) => {
+      const s = new Date(m + '-01T00:00').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+      return s.charAt(0).toUpperCase() + s.slice(1);
+    };
+    function cardVencedor(f) {
+      const imgs = Array.from({ length: f.imagens || 1 }, (_, k) =>
+        `<img src="/api/file/${esc(f.id)}/${k}" loading="lazy" alt="Foto vencedora de ${esc(f.promotor)}" data-zoom="${esc(f.id)}" data-idx="${k}" style="${(f.imagens || 1) > 1 ? 'width:50%' : ''}" />`).join('');
+      return `<div class="rk-card rk-pos${f.rankingPos}">
+        <div class="rk-medalha">${MEDALHA[f.rankingPos]}</div>
+        <div class="rk-fotos">${imgs}</div>
+        <div class="rk-info">
+          <div class="rk-lugar">${f.rankingPos}º lugar</div>
+          <div class="rk-nome">${esc(f.promotor)}</div>
+          <div class="muted">${esc(f.cliente)} · ${esc(f.regiao)}${f.grupo ? ' · ' + esc(f.grupo) : ''}</div>
+        </div>
+      </div>`;
+    }
+    async function init() {
+      const me = await api('/api/me'); // exige login (api() manda pro login se não tiver)
+      if (me.role === 'admin') document.getElementById('voltar').href = '/pdv/admin.html';
+      const edicoes = await api('/api/ranking');
+      document.getElementById('rk-vazio').classList.toggle('hidden', edicoes.length > 0);
+      document.getElementById('edicoes').innerHTML = edicoes.map((ed, i) => `
+        <section class="card rk-edicao">
+          <h2 style="text-align:center;">${i === 0 ? '✨ ' : ''}Edição de ${nomeMes(ed.mes)}${i === 0 ? '' : ' <span class="muted" style="font-weight:400;font-size:13px;">(edição passada)</span>'}</h2>
+          <div class="podio">${ed.fotos.map(cardVencedor).join('')}</div>
+        </section>`).join('');
+    }
+    document.addEventListener('click', (e) => {
+      const img = e.target.closest('[data-zoom]');
+      if (!img) return;
+      document.getElementById('modalimg').src = '/api/file/' + img.dataset.zoom + '/' + (img.dataset.idx || 0);
+      document.getElementById('modal').classList.add('show');
+    });
+    init().catch((e) => toast(e.message, 'bad'));
+  </script>
+</body>
+</html>

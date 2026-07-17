@@ -14,7 +14,7 @@
 <body>
   <header class="site-header">
     <a class="brand" href="/"><img src="/logo-memphis.webp" alt="Memphis" class="brand-logo" /></a>
-    <a class="ghost" href="/" style="padding:8px 16px;border:1px solid var(--line);border-radius:7px;color:var(--muted);font-size:13px;">← Início</a>
+    <a class="ghost" href="/pdv/" style="padding:8px 16px;border:1px solid var(--line);border-radius:7px;color:var(--muted);font-size:13px;">← Início</a>
   </header>
 
   <div class="login-wrap">
@@ -33,7 +33,7 @@
       <div style="text-align:center;margin-top:14px;">
         <a href="#" id="forgot-link" style="font-size:13px;">Esqueci minha senha</a>
         <span class="muted" style="font-size:13px;"> · </span>
-        <a href="/cadastro.html" style="font-size:13px;">Não tem conta? <b>Criar conta</b></a>
+        <a href="/pdv/cadastro.html" style="font-size:13px;">Não tem conta? <b>Criar conta</b></a>
       </div>
       <form id="forgot-form" class="hidden" style="margin-top:12px;border-top:1px solid var(--line);padding-top:14px;">
         <label for="forgot-email">Seu e-mail</label>
@@ -51,8 +51,8 @@
         const me = await fetch('/api/me');
         if (me.ok) {
           const u = await me.json();
-          if (u.mustChangePassword) location.href = '/trocar-senha.html';
-          else location.href = u.role === 'admin' ? '/admin.html' : '/promotor.html';
+          if (u.mustChangePassword) location.href = '/pdv/trocar-senha.html';
+          else location.href = u.role === 'admin' ? '/pdv/admin.html' : '/pdv/promotor.html';
         }
       } catch {}
     })();
@@ -82,8 +82,8 @@
           return;
         }
         // senha "0" = conta criada sem senha: cai na tela de boas-vindas pra criar a própria
-        if (data.mustChangePassword) location.href = '/trocar-senha.html' + (pwInput.value === '0' ? '?primeiro=1' : '');
-        else location.href = data.role === 'admin' ? '/admin.html' : '/promotor.html';
+        if (data.mustChangePassword) location.href = '/pdv/trocar-senha.html' + (pwInput.value === '0' ? '?primeiro=1' : '');
+        else location.href = data.role === 'admin' ? '/pdv/admin.html' : '/pdv/promotor.html';
       } catch (ex) {
         err.textContent = 'Erro de conexão. Tente de novo.';
         toast('Erro de conexão', 'bad');

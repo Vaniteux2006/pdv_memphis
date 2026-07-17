@@ -20,7 +20,7 @@ async function api(url, opts = {}) {
     ...opts,
   });
   if (res.status === 401) {
-    location.href = '/login.html';
+    location.href = '/pdv/login.html'; // login é do módulo PDV (por ora o único com conta)
     throw new Error('não autenticado');
   }
   const ct = res.headers.get('content-type') || '';
@@ -66,7 +66,7 @@ function esc(s) {
 
 async function logout() {
   await api('/api/logout', { method: 'POST' });
-  location.href = '/';
+  location.href = '/pdv/';
 }
 
 // Esc fecha o modal de foto ampliada (acessibilidade por teclado)

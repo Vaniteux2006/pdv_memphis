@@ -50,12 +50,12 @@
     (async () => {
       try {
         const me = await fetch('/api/me');
-        if (!me.ok) { location.href = '/login.html'; return; }
+        if (!me.ok) { location.href = '/pdv/login.html'; return; }
         const u = await me.json();
         role = u.role;
         // se já trocou, não precisa ficar aqui
-        if (!u.mustChangePassword) location.href = role === 'admin' ? '/admin.html' : '/promotor.html';
-      } catch { location.href = '/login.html'; }
+        if (!u.mustChangePassword) location.href = role === 'admin' ? '/pdv/admin.html' : '/pdv/promotor.html';
+      } catch { location.href = '/pdv/login.html'; }
     })();
 
     document.getElementById('form').addEventListener('submit', async (e) => {
@@ -68,7 +68,7 @@
       try {
         await api('/api/change-password', { method: 'POST', body: JSON.stringify({ currentPassword: a, newPassword: n }) });
         toast('Senha criada! Entrando...', 'ok');
-        setTimeout(() => (location.href = role === 'admin' ? '/admin.html' : '/promotor.html'), 1200);
+        setTimeout(() => (location.href = role === 'admin' ? '/pdv/admin.html' : '/pdv/promotor.html'), 1200);
       } catch (ex) { err.textContent = ex.message; }
     });
   </script>
