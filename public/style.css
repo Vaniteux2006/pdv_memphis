@@ -211,6 +211,28 @@ button:disabled { opacity: .5; cursor: not-allowed; transform: none; box-shadow:
 .tabs button.active { background: var(--teal); color: #fff; border-color: transparent; }
 .tabs button:hover:not(.active) { background: var(--bg-soft); color: var(--ink); }
 
+/* tema escuro (hub IM) — remapeia os tokens; o resto do CSS segue usando as vars */
+.theme-dark {
+  --ink: #f2f3f5;
+  --txt: #c7cace;
+  --muted: #9aa0a6;
+  --line: #2b323a;
+  --bg: #12161b;
+  --bg-soft: #171c22;
+  --panel: #1c222a;
+  --panel2: #1c222a;
+  --teal-soft: #12303a;
+  --teal-dark: #4fc3e3;      /* teal mais claro pra ler no escuro (links) */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .4);
+  --shadow-md: 0 6px 18px rgba(0, 0, 0, .5);
+  background: var(--bg);
+  color: var(--txt);
+}
+.theme-dark .site-header { background: #171c22; }
+.theme-dark .hub-card { background: var(--panel); }
+.theme-dark .lp-hero h1 { color: var(--ink); }
+.theme-dark ::selection { background: var(--teal); color: #fff; }
+
 /* ---------- hub IM (portal de módulos: PDV / PDP / RCA) ---------- */
 .hub-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px; max-width: 900px; margin: 0 auto; }
 .hub-card {
@@ -387,7 +409,7 @@ button.modal-close:hover { background: rgba(255, 255, 255, .28); }
 .step p { margin: 0; font-size: 13px; color: var(--muted); }
 
 .lp-footer { background: var(--footer); color: #cfd0d2; padding: 40px 22px; text-align: center; font-size: 13px; }
-.lp-footer .fbrand { font-size: 22px; font-weight: 600; color: #fff; letter-spacing: 1px; margin-bottom: 6px; }
+.lp-footer .fbrand { font-family: Arial, Helvetica, sans-serif; font-size: 22px; font-weight: 700; color: #fff; letter-spacing: .5px; margin-bottom: 6px; }
 .lp-footer a { color: #fff; }
 
 /* ---------- celular ---------- */
