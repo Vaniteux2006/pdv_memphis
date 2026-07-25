@@ -30,6 +30,7 @@
       <button data-tab="aprovar" role="tab" aria-selected="false">Aprovar promotor <span id="pend-badge" class="pill warn hidden" style="margin-left:4px;">0</span></button>
       <button data-tab="promotores" role="tab" aria-selected="false">Contas de promotor <span id="contas-badge" class="pill warn hidden" style="margin-left:4px;">0</span></button>
       <button data-tab="listas" role="tab" aria-selected="false">Listas</button>
+      <button data-tab="aderencia" role="tab" aria-selected="false">Aderência</button>
     </div>
 
     <!-- FOTOS -->
@@ -210,6 +211,31 @@
         </div>
       </div>
     </section>
+
+    <!-- ADERÊNCIA -->
+    <section id="tab-aderencia" class="hidden">
+      <div class="card">
+        <h2>📈 Aderência da campanha</h2>
+        <p class="muted">Quem <b>participou de verdade</b> no período — contando promotores (não fotos).
+          O período vale pela <b>data da exposição</b> da foto. Começa nos últimos 3 meses; mude as datas como quiser.</p>
+        <div class="toolbar">
+          <label class="f-data">De <input id="ad-de" type="date" aria-label="Período a partir de" /></label>
+          <label class="f-data">até <input id="ad-ate" type="date" aria-label="Período até" /></label>
+          <button class="secondary" data-act="ad-meses" data-meses="1" style="font-size:12px;">1 mês</button>
+          <button class="secondary" data-act="ad-meses" data-meses="3" style="font-size:12px;">3 meses</button>
+          <button class="secondary" data-act="ad-meses" data-meses="6" style="font-size:12px;">6 meses</button>
+          <button class="secondary" data-act="ad-meses" data-meses="12" style="font-size:12px;">12 meses</button>
+          <button id="ad-aplicar">Atualizar</button>
+          <span class="count" id="ad-periodo"></span>
+        </div>
+        <div class="kpis" id="ad-kpis"></div>
+        <p class="muted" id="ad-rodape" style="margin-top:14px;"></p>
+      </div>
+      <div class="row">
+        <div class="card"><h2>🗺 Regiões mais ativas</h2><div id="ad-regioes"></div></div>
+        <div class="card"><h2>🏷 Grupos mais ativos</h2><div id="ad-grupos" style="max-height:420px;overflow:auto;"></div></div>
+      </div>
+    </section>
   </main>
 
   <div class="modal" id="modal" role="dialog" aria-modal="true" aria-label="Foto ampliada" onclick="this.classList.remove('show')">
@@ -223,7 +249,8 @@
     let ref = {}, me = {};
     // permissão efetiva do usuário logado ('*' = acesso total via crachá)
     const eu = (p) => (me.permissions || []).includes('*') || (me.permissions || []).includes(p);
-    const PERM_DA_ABA = { fotos: 'fotos', aprovar: 'aprovar', promotores: 'contas', listas: 'listas' };
+    const PERM_DA_ABA = { fotos: 'fotos', aprovar: 'aprovar', promotores: 'contas', listas: 'listas', aderencia: 'aderencia' };
+    const ABAS = Object.keys(PERM_DA_ABA);
 
     async function init() {
       me = await api('/api/me');
@@ -255,7 +282,7 @@
       document.getElementById('cracha-validar').classList.toggle('hidden', eu('*'));
 
       // abre a primeira aba permitida; admin sem NENHUMA permissão vê só o crachá pra validar
-      const primeira = ['fotos', 'aprovar', 'promotores', 'listas'].find((t) => eu(PERM_DA_ABA[t]));
+      const primeira = ABAS.find((t) => eu(PERM_DA_ABA[t]));
       // admin sem acesso total e sem a aba Contas ainda precisa conseguir validar o crachá:
       // move o card pra primeira aba que ele enxerga
       if (primeira && !eu('*') && !eu('contas')) {
@@ -265,7 +292,7 @@
         abrirAba(primeira);
       } else {
         document.querySelector('.tabs').classList.add('hidden');
-        ['fotos', 'aprovar', 'promotores', 'listas'].forEach((t) => document.getElementById('tab-' + t).classList.add('hidden'));
+        ABAS.forEach((t) => document.getElementById('tab-' + t).classList.add('hidden'));
         document.getElementById('tab-promotores').classList.remove('hidden');
         document.querySelectorAll('#tab-promotores .card').forEach((c) => { if (c.id !== 'card-cracha') c.classList.add('hidden'); });
         toast('Sua conta ainda não tem permissões. Valide um crachá ou peça a um admin com acesso total.', 'bad');
@@ -296,11 +323,12 @@
         x.classList.toggle('active', x.dataset.tab === tab);
         x.setAttribute('aria-selected', String(x.dataset.tab === tab));
       });
-      ['fotos', 'aprovar', 'promotores', 'listas'].forEach((t) =>
+      ABAS.forEach((t) =>
         document.getElementById('tab-' + t).classList.toggle('hidden', t !== tab));
       if (tab === 'aprovar') loadPendentes();
       if (tab === 'promotores') loadUsers();
       if (tab === 'listas') { renderLists(); loadSenhas().catch(() => {}); }
+      if (tab === 'aderencia') loadAderencia().catch((e) => toast(e.message, 'bad'));
     }
     document.querySelectorAll('.tabs button').forEach((b) => b.addEventListener('click', () => abrirAba(b.dataset.tab)));
     const abaAtiva = () => document.querySelector('.tabs button.active')?.dataset.tab;
@@ -1023,6 +1051,88 @@
       btn.disabled = false; btn.textContent = '📥 Importar planilha de senhas';
     });
 
+    // ---- aderência ----
+    // Tudo que aparece aqui vem pronto do servidor (/api/admin/aderencia) — o navegador
+    // só formata. Contagem é de PROMOTORES distintos: 4 fotos do mesmo promotor = 1.
+    // % com uma casa quando é pequeno (base de 2 mil nomes: "0%" esconderia participação real)
+    const pct = (n, total) => {
+      if (!(total > 0)) return '—';
+      const v = (n / total) * 100;
+      return (v > 0 && v < 10 ? v.toFixed(1).replace('.', ',') : Math.round(v)) + '%';
+    };
+    const dataBR = (d) => (d ? new Date(d + 'T00:00').toLocaleDateString('pt-BR') : '—');
+    const dosParticipantes = (n, participantes) =>
+      (participantes ? `${pct(n, participantes)} de quem participou` : 'sem participantes no período');
+    // desloca a data ISO em N meses pra trás, sem escorregar de mês (31/07 - 3 = 30/04)
+    function mesesAntes(iso, meses) {
+      const [a, m, d] = iso.split('-').map(Number);
+      const alvo = new Date(Date.UTC(a, m - 1 - meses, 1));
+      const ultimoDia = new Date(Date.UTC(alvo.getUTCFullYear(), alvo.getUTCMonth() + 1, 0)).getUTCDate();
+      alvo.setUTCDate(Math.min(d, ultimoDia));
+      return alvo.toISOString().slice(0, 10);
+    }
+    function setPeriodo(meses) {
+      const hoje = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD local
+      document.getElementById('ad-ate').value = hoje;
+      document.getElementById('ad-de').value = mesesAntes(hoje, meses);
+    }
+    function kpi(rotulo, valor, detalhe, cor) {
+      return `<div class="kpi">
+        <span class="kpi-label">${rotulo}</span>
+        <b class="kpi-num"${cor ? ` style="color:${cor}"` : ''}>${valor}</b>
+        <span class="kpi-sub">${detalhe || ''}</span>
+      </div>`;
+    }
+    // linha de ranking com barrinha proporcional ao 1º colocado
+    function adLinhas(itens, rotulo) {
+      if (!itens.length) return '<div class="muted">Nenhum envio no período.</div>';
+      const max = itens[0].promotores || 1;
+      return itens.map((r, i) => `
+        <div class="ad-linha">
+          <div class="ad-linha-top">
+            <span>${i === 0 ? '🥇 ' : ''}<b>${esc(rotulo(r))}</b></span>
+            <span class="muted">${r.promotores} promotor(es) · ${r.fotos} foto(s) · ${r.validadas} aprovada(s)</span>
+          </div>
+          <div class="ad-bar"><i style="width:${Math.max(3, Math.round((r.promotores / max) * 100))}%"></i></div>
+        </div>`).join('');
+    }
+    async function loadAderencia() {
+      if (!val('ad-de') || !val('ad-ate')) setPeriodo(3); // padrão: últimos 3 meses
+      const de = val('ad-de'), ate = val('ad-ate');
+      if (de > ate) return toast('A data inicial está depois da final', 'bad');
+      const btn = document.getElementById('ad-aplicar');
+      btn.disabled = true; btn.textContent = '⏳';
+      try {
+        const r = await api(`/api/admin/aderencia?de=${de}&ate=${ate}`);
+        const base = r.base.banco || r.base.contasAtivas;
+        const p = r.promotores, f = r.fotos;
+        document.getElementById('ad-periodo').textContent =
+          `${dataBR(r.periodo.de)} → ${dataBR(r.periodo.ate)}`;
+        document.getElementById('ad-kpis').innerHTML =
+          kpi('Base de promotores', base,
+            `${r.base.banco} no banco de nomes · ${r.base.contasAtivas} conta(s) ativa(s)`) +
+          kpi('Participaram (enviaram foto)', p.participantes,
+            `<b>${pct(p.participantes, base)}</b> de aderência sobre a base`, 'var(--teal)') +
+          kpi('Com foto aprovada', p.comFotoValidada,
+            dosParticipantes(p.comFotoValidada, p.participantes), 'var(--green)') +
+          kpi('Promotores pagos', p.pagos,
+            dosParticipantes(p.pagos, p.participantes), 'var(--purple)') +
+          kpi('Região mais ativa', r.regioes.length ? esc(r.regioes[0].nome) : '—',
+            r.regioes.length ? `${r.regioes[0].promotores} promotor(es) · ${r.regioes[0].fotos} foto(s)` : 'sem envios') +
+          kpi('Grupo mais ativo', r.grupos.length ? esc(r.grupos[0].grupo) : '—',
+            r.grupos.length ? `${r.grupos[0].promotores} promotor(es) · ${r.grupos[0].fotos} foto(s)` : 'sem envios');
+        document.getElementById('ad-rodape').innerHTML =
+          `<b>${f.total}</b> foto(s) no período — ${f.validadas} aprovada(s), ${f.recusadas} recusada(s), ` +
+          `${f.pendentes} ainda a avaliar · ${f.pagas} já paga(s).` +
+          (f.semGrupo ? ` <span class="muted">(${f.semGrupo} sem grupo informado — fora do ranking de grupos.)</span>` : '');
+        document.getElementById('ad-regioes').innerHTML = adLinhas(r.regioes, (x) => `${x.nome} (${x.sigla || '—'})`);
+        document.getElementById('ad-grupos').innerHTML = adLinhas(r.grupos, (x) => x.grupo);
+      } finally { btn.disabled = false; btn.textContent = 'Atualizar'; }
+    }
+    document.getElementById('ad-aplicar').onclick = () => loadAderencia().catch((e) => toast(e.message, 'bad'));
+    ['ad-de', 'ad-ate'].forEach((id) =>
+      document.getElementById(id).addEventListener('change', () => loadAderencia().catch((e) => toast(e.message, 'bad'))));
+
     // ---- crachá de acesso total ----
     let crachaCodigo = '';
     document.getElementById('btn-gerar-cracha').onclick = async () => {
@@ -1119,6 +1229,7 @@
         case 'del-item': return delItem(d.type, d.value);
         case 'del-senha': return delSenha(d.tipo, d.inicio);
         case 'set-ranking': return setRankingPos(d.id, d.on === '1' ? null : Number(d.pos)); // clicar de novo tira a medalha
+        case 'ad-meses': { setPeriodo(Number(d.meses)); return loadAderencia().catch((err) => toast(err.message, 'bad')); }
       }
     });
     document.addEventListener('change', (e) => {

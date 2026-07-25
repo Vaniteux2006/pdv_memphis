@@ -6,7 +6,7 @@ enviado automaticamente pelo navegador. Erros retornam `{ "error": "mensagem" }`
 **Níveis de acesso:**
 - 🔓 público
 - 🔑 autenticado (qualquer logado)
-- 👑 admin com a **permissão** indicada (`fotos` · `aprovar` · `contas` · `listas`)
+- 👑 admin com a **permissão** indicada (`fotos` · `aprovar` · `contas` · `listas` · `aderencia`)
 - 🪪 admin com **acesso total** (`*` — via crachá)
 
 > Desde a v1.3, admin não é tudo-ou-nada: cada conta admin tem uma lista de
@@ -53,6 +53,12 @@ enviado automaticamente pelo navegador. Erros retornam `{ "error": "mensagem" }`
 | POST | `/api/admin/mark-downloaded` | 👑 `fotos` | `{ ids }` — o navegador chama **depois** de concluir o ZIP; marca `baixado=true`. |
 | GET | `/api/admin/export.xlsx` | 👑 `fotos` | **Excel gerado do zero no molde oficial** — uma aba por região, bloco-resumo com fórmulas (`COUNTIFS`), colunas do modelo (Seq, REF, COLAR EM PASTAS, Semanas…). Aceita os mesmos filtros de busca. |
 | POST | `/api/admin/purge` | 👑 `fotos` | Apaga **definitivamente** as já baixadas (Mongo + Cloudinary): `{ removed }`. |
+
+## Aderência (números de participação da campanha)
+
+| Método | Rota | Acesso | Query | Descrição |
+|--------|------|--------|-------|-----------|
+| GET | `/api/admin/aderencia` | 👑 `aderencia` | `?de=YYYY-MM-DD&ate=YYYY-MM-DD` | Consolidado do período (padrão: **últimos 3 meses** até hoje), pela **data da exposição**. Conta **promotores distintos** (`promotorNorm`), não fotos: `{ periodo, base:{ banco, contasAtivas }, promotores:{ participantes, comFotoValidada, pagos }, fotos:{ total, validadas, recusadas, pendentes, pagas, semGrupo }, regioes:[…], grupos:[…] }`. `regioes`/`grupos` vêm ordenados por nº de promotores — o 1º é o "mais ativo". Agregação no Mongo (`$group` duplo), sem trafegar as fotos. |
 
 ## Pendentes (aprovação de promotor **e grupo**)
 

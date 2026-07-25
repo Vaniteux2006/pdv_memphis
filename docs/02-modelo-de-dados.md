@@ -97,7 +97,7 @@ Contas de acesso (admins e promotores).
 - `mustChangePassword`: senha **provisória** — o front força a troca no primeiro login
   (`trocar-senha.html`). Setada ao criar conta em massa, ao importar por planilha e
   quando o admin redefine a senha de alguém.
-- `permissions` (só admin): lista granular — `fotos`, `aprovar`, `contas`, `listas` —
+- `permissions` (só admin): lista granular — `fotos`, `aprovar`, `contas`, `listas`, `aderencia` —
   ou `['*']` (**acesso total**, obtido validando o crachá). Admin novo nasce **sem
   nenhuma** permissão, a menos que quem criou tenha acesso total.
 - Perfil: `telefone` (só dígitos), `grupo`, `regiao`, `setor`, `matricula`

@@ -116,4 +116,4 @@ stateDiagram-v2
 | Senha provisória exige troca | login → `trocar-senha.html` | Contas criadas em massa/por planilha e senhas redefinidas pelo admin nascem com `mustChangePassword`. |
 | Senha **"0"** = primeiro acesso | login → `trocar-senha.html?primeiro=1` | A pessoa entra com `0` e cai numa tela de **boas-vindas** pra criar a própria senha (sem digitar a provisória). Vale na planilha e na criação manual. |
 | Admin é protegido | `setUserActive` / `deleteUser` | Não pode ser banido nem excluído. |
-| Permissões granulares no painel | `requirePerm` | Cada aba/ação exige `fotos`/`aprovar`/`contas`/`listas`; acesso total (`*`) só via crachá. |
+| Permissões granulares no painel | `requirePerm` | Cada aba/ação exige `fotos`/`aprovar`/`contas`/`listas`/`aderencia`; acesso total (`*`) só via crachá. |

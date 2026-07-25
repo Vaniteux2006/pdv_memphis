@@ -56,7 +56,7 @@ flowchart LR
 | Papel | O que faz |
 |-------|-----------|
 | **Promotor** | Loga (troca senha provisória no 1º acesso), envia **1 foto/semana e até 4/mês** (cada foto com 1 ou 2 imagens — "antes e depois"), acompanha o status (avaliação / pago). |
-| **Admin (equipe)** | Conforme suas **permissões**: `fotos` (busca, avalia, valida/recusa, marca pago, exclui, baixa ZIP e Excel), `aprovar` (promotores e grupos novos), `contas` (cria/edita contas, **importa por planilha**, bane), `listas` (grupos, banco de promotores, senhas da campanha). Acesso total (`*`) só via **crachá**. |
+| **Admin (equipe)** | Conforme suas **permissões**: `fotos` (busca, avalia, valida/recusa, marca pago, exclui, baixa ZIP e Excel), `aprovar` (promotores e grupos novos), `contas` (cria/edita contas, **importa por planilha**, bane), `listas` (grupos, banco de promotores, senhas da campanha), `aderencia` (números de participação da campanha por período). Acesso total (`*`) só via **crachá**. |
 
 ## Teste de regressão
 

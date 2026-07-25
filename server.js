@@ -689,6 +689,19 @@ app.delete('/api/admin/submissions/:id', requireAuth, requirePerm('fotos'), ah(a
   res.json({ ok: true });
 }));
 
+// ---------- aderência ----------
+// números de participação do período (padrão: últimos 3 meses até hoje)
+const ISO_DATA = /^\d{4}-\d{2}-\d{2}$/;
+app.get('/api/admin/aderencia', requireAuth, requirePerm('aderencia'), ah(async (req, res) => {
+  const hoje = db.hojeBR();
+  const ate = ISO_DATA.test(req.query.ate || '') ? req.query.ate : hoje;
+  const d = new Date(ate + 'T00:00:00Z');
+  d.setUTCMonth(d.getUTCMonth() - 3);
+  const de = ISO_DATA.test(req.query.de || '') ? req.query.de : d.toISOString().slice(0, 10);
+  if (de > ate) return res.status(400).json({ error: 'A data inicial é depois da final' });
+  res.json(await db.aderencia({ de, ate }));
+}));
+
 // ---------- ranking ----------
 // admin marca 1º/2º/3º da edição (a exclusividade da posição é garantida no db)
 app.post('/api/admin/ranking', requireAuth, requirePerm('fotos'), ah(async (req, res) => {

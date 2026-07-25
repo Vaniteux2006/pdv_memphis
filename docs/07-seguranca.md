@@ -24,7 +24,7 @@ flowchart TD
 
 ### Autorização — permissões granulares + crachá
 - Admin **não é tudo-ou-nada**: cada conta admin tem `permissions` —
-  `fotos` (avaliar/baixar/exportar/excluir), `aprovar`, `contas`, `listas` — e cada
+  `fotos` (avaliar/baixar/exportar/excluir), `aprovar`, `contas`, `listas`, `aderencia` — e cada
   rota `/api/admin/*` exige a sua via **`requirePerm`** (senão **403**).
 - **Admin novo nasce sem nenhuma permissão** (a menos que quem criou tenha acesso total).
 - **Acesso total (`*`)** — inclusive configurar as permissões dos outros — só validando o
