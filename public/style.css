@@ -230,6 +230,7 @@ button:disabled { opacity: .5; cursor: not-allowed; transform: none; box-shadow:
 }
 .theme-dark .site-header { background: #171c22; }
 .theme-dark .hub-card { background: var(--panel); }
+.theme-dark .lp-hero { background: var(--bg-soft); }
 .theme-dark .lp-hero h1 { color: var(--ink); }
 .theme-dark ::selection { background: var(--teal); color: #fff; }
 
@@ -373,7 +374,7 @@ button.modal-close:hover { background: rgba(255, 255, 255, .28); }
 
 /* ================= LANDING ================= */
 .lp-hero {
-  background: linear-gradient(160deg, #fff 0%, var(--teal-soft) 100%);
+  background: var(--teal-soft);
   padding: 80px 22px 90px; text-align: center; border-bottom: 1px solid var(--line);
 }
 .lp-hero > * { animation: rise .5s ease both; }
