@@ -31,6 +31,7 @@
       <button data-tab="promotores" role="tab" aria-selected="false">Contas de promotor <span id="contas-badge" class="pill warn hidden" style="margin-left:4px;">0</span></button>
       <button data-tab="listas" role="tab" aria-selected="false">Listas</button>
       <button data-tab="aderencia" role="tab" aria-selected="false">Aderência</button>
+      <button data-tab="graficos" role="tab" aria-selected="false">Gráficos</button>
     </div>
 
     <!-- FOTOS -->
@@ -48,6 +49,7 @@
           <select id="f-grupo" aria-label="Filtrar por grupo"><option value="">Todos grupos</option></select>
           <select id="f-nota" aria-label="Filtrar por nota"><option value="">Todas notas</option></select>
           <a id="link-ranking" class="hidden" href="/pdv/ranking.html" target="_blank" style="font-size:13px;white-space:nowrap;">🔗 ver página do ranking</a>
+          <button class="secondary" id="f-ordem" style="font-size:12px;white-space:nowrap;" title="Alterna entre atacar a fila pela mais antiga ou ver as que acabaram de chegar">⏳ Mais antigas primeiro</button>
           <span class="count" id="count"></span>
         </div>
         <div class="toolbar">
@@ -71,6 +73,9 @@
         <div id="galeria" class="hidden"></div>
         <div class="muted empty hidden" id="empty">🗂️ Nenhuma foto por aqui.</div>
         <div class="grid" id="grid"></div>
+        <div style="text-align:center;margin-top:14px;">
+          <button class="secondary hidden" id="btn-mais">⬇ Carregar mais</button>
+        </div>
       </div>
     </section>
 
@@ -183,10 +188,12 @@
         <button class="secondary" id="ref-import">📥 Atualizar por planilha</button>
         <button class="secondary" id="ref-template">⬇ Baixar modelo</button>
         <input type="file" id="ref-import-file" accept=".xlsx" class="hidden" />
-        <p class="muted" style="margin-top:8px;"><b>Baixe o modelo</b> — colunas <b>Grupos</b> e <b>Promotores</b>, um nome por linha
-          (pode preencher só uma das duas). A importação só <b>adiciona</b> o que ainda não está na lista — não remove nem altera nada;
-          nome repetido é ignorado e nome que estava aguardando aprovação é aprovado junto.
-          Também aceita planilha sua sem o modelo, desde que tenha uma coluna Grupos e/ou Promotores no cabeçalho.</p>
+        <p class="muted" style="margin-top:8px;"><b>Baixe o modelo</b> — colunas <b>Grupos</b>, <b>Promotores</b> e
+          <b>Grupo do Promotor</b>, um nome por linha (pode preencher só o que interessar).
+          A importação só <b>adiciona</b> nomes — não remove nada; nome repetido é ignorado e nome que estava
+          aguardando aprovação é aprovado junto. A única coisa que ela <b>atualiza</b> é o
+          <b>grupo do promotor</b>, quando essa coluna vem preenchida (em branco não apaga o grupo que já existe).
+          Também aceita planilha sua sem o modelo, desde que os títulos das colunas estejam no cabeçalho.</p>
         <div id="ref-import-result" class="hidden" style="margin-top:10px;"></div>
       </div>
       <div class="card">
@@ -196,12 +203,25 @@
         <div id="list-pontos"></div>
         <div class="row" style="margin-top:10px;"><input id="add-pontosExtra" placeholder="novo ponto extra (ex: Ponta de gôndola)" aria-label="Nome do novo ponto extra" /><button data-add="pontosExtra" style="flex:0;" aria-label="Adicionar ponto extra">+</button></div>
       </div>
+      <div class="card">
+        <h2>✗ Motivos de recusa</h2>
+        <p class="muted">Os botões que o avaliador escolhe ao <b>recusar</b> uma foto. É o que alimenta o
+          "motivo mais comum de recusa" na Aderência — por isso motivo digitado à mão não conta, só estes.
+          Deixe um <b>"Outros"</b> na lista pro que não se encaixar (o avaliador detalha na observação).
+          Remover um motivo <b>não mexe nas fotos já recusadas</b> com ele.</p>
+        <div id="list-motivos"></div>
+        <div class="row" style="margin-top:10px;"><input id="add-motivosRecusa" placeholder="novo motivo (ex: Foto cortada)" aria-label="Nome do novo motivo de recusa" /><button data-add="motivosRecusa" style="flex:0;" aria-label="Adicionar motivo de recusa">+</button></div>
+      </div>
       <p class="muted">Banco de promotores da empresa: <b id="prom-total">0</b> nomes (usado pra checar quem envia).</p>
       <div class="row">
         <div class="card"><h2>Grupos</h2><div id="list-grupos"></div>
           <div class="row" style="margin-top:10px;"><input id="add-grupos" placeholder="novo grupo" aria-label="Nome do novo grupo" /><button data-add="grupos" style="flex:0;" aria-label="Adicionar grupo">+</button></div>
         </div>
         <div class="card"><h2>Promotores (banco)</h2>
+          <p class="muted">O <b>grupo</b> ao lado de cada nome é o cadastro oficial de quem pertence a qual grupo —
+            é o denominador do "% de participação do grupo" na Aderência. Dá pra preencher aqui um a um
+            ou em massa pela planilha (coluna <b>Grupo do Promotor</b>).</p>
+          <p class="muted" id="prom-sem-grupo" style="margin-bottom:8px;"></p>
           <input id="prom-search" placeholder="filtrar nome..." aria-label="Filtrar promotores" style="margin-bottom:8px;" />
           <div id="list-promotores" style="max-height:300px;overflow:auto;"></div>
           <div class="row" style="margin-top:10px;"><input id="add-promotores" placeholder="novo promotor" aria-label="Nome do novo promotor" /><button data-add="promotores" style="flex:0;" aria-label="Adicionar promotor">+</button></div>
@@ -231,9 +251,67 @@
         <div class="kpis" id="ad-kpis"></div>
         <p class="muted" id="ad-rodape" style="margin-top:14px;"></p>
       </div>
+
+      <div class="card">
+        <h2>🏷 Grupos — participação e assertividade</h2>
+        <p class="muted">Sobre o <b>cadastro</b> do grupo (quantos nomes do banco pertencem a ele).
+          <b class="leg-part">Participação</b> = mandou ao menos 1 foto no período.
+          <b class="leg-assert">Assertividade</b> = teve ao menos 1 foto <b>aprovada</b>.
+          A diferença entre as duas é o trabalho que foi feito mas não passou.</p>
+        <div id="ad-grupos-cad" style="max-height:520px;overflow:auto;"></div>
+        <p class="muted" id="ad-grupos-aviso" style="margin-top:10px;"></p>
+      </div>
+
+      <div class="row">
+        <div class="card"><h2>✗ Motivos de recusa</h2><div id="ad-motivos"></div>
+          <p class="muted" id="ad-motivos-aviso" style="margin-top:10px;"></p></div>
+        <div class="card"><h2>⭐ Pontos extra</h2><div id="ad-pontos"></div>
+          <p class="muted" id="ad-pontos-aviso" style="margin-top:10px;"></p></div>
+      </div>
+
       <div class="row">
         <div class="card"><h2>🗺 Regiões mais ativas</h2><div id="ad-regioes"></div></div>
-        <div class="card"><h2>🏷 Grupos mais ativos</h2><div id="ad-grupos" style="max-height:420px;overflow:auto;"></div></div>
+        <div class="card"><h2>🏷 Grupos mais ativos <span class="muted" style="font-weight:400;font-size:12px;">(grupo digitado na foto)</span></h2>
+          <div id="ad-grupos" style="max-height:420px;overflow:auto;"></div></div>
+      </div>
+
+      <div class="row">
+        <div class="card"><h2>👤 Promotores com mais recusas</h2><div id="ad-rec-promotores"></div></div>
+        <div class="card"><h2>🏪 Clientes com mais recusas</h2><div id="ad-rec-clientes"></div></div>
+      </div>
+    </section>
+
+    <!-- GRÁFICOS -->
+    <section id="tab-graficos" class="hidden">
+      <div class="card">
+        <h2>📊 Evolução da campanha</h2>
+        <p class="muted">Os mesmos números da Aderência, mas <b>ao longo do tempo</b>. O período vale pela
+          <b>data da exposição</b> da foto. Passe o mouse (ou o dedo) sobre os gráficos pra ver os valores.</p>
+        <div class="toolbar">
+          <label class="f-data">De <input id="gr-de" type="date" aria-label="Período a partir de" /></label>
+          <label class="f-data">até <input id="gr-ate" type="date" aria-label="Período até" /></label>
+          <button class="secondary" data-act="gr-por" data-por="semana" id="gr-btn-semana">Por semana</button>
+          <button class="secondary" data-act="gr-por" data-por="mes" id="gr-btn-mes">Por mês</button>
+          <button id="gr-aplicar">Atualizar</button>
+          <span class="count" id="gr-periodo"></span>
+        </div>
+      </div>
+      <div class="card">
+        <h2>📈 Fotos, recusas e excelentes</h2>
+        <p class="muted">Volume de envios e o que aconteceu com eles. As três linhas contam a mesma
+          unidade (fotos), por isso dividem a mesma escala.</p>
+        <div id="gr-volume"></div>
+      </div>
+      <div class="card">
+        <h2>👥 Participação — promotores que enviaram</h2>
+        <p class="muted">Promotores <b>distintos</b> por período (quem mandou 4 fotos na semana conta uma vez).</p>
+        <div id="gr-participacao"></div>
+      </div>
+      <div class="card">
+        <h2>✓ Taxa de aprovação</h2>
+        <p class="muted">Das fotos <b>já avaliadas</b> no período, quantas foram aprovadas. Fica em gráfico
+          separado porque é percentual — misturar com contagem na mesma escala distorceria as duas.</p>
+        <div id="gr-aprovacao"></div>
       </div>
     </section>
   </main>
@@ -249,7 +327,9 @@
     let ref = {}, me = {};
     // permissão efetiva do usuário logado ('*' = acesso total via crachá)
     const eu = (p) => (me.permissions || []).includes('*') || (me.permissions || []).includes(p);
-    const PERM_DA_ABA = { fotos: 'fotos', aprovar: 'aprovar', promotores: 'contas', listas: 'listas', aderencia: 'aderencia' };
+    // Gráficos usa a MESMA permissão da Aderência — são os mesmos números, só que ao longo
+    // do tempo; exigir uma permissão nova obrigaria a reconfigurar todo admin já existente.
+    const PERM_DA_ABA = { fotos: 'fotos', aprovar: 'aprovar', promotores: 'contas', listas: 'listas', aderencia: 'aderencia', graficos: 'aderencia' };
     const ABAS = Object.keys(PERM_DA_ABA);
 
     async function init() {
@@ -329,6 +409,8 @@
       if (tab === 'promotores') loadUsers();
       if (tab === 'listas') { renderLists(); loadSenhas().catch(() => {}); }
       if (tab === 'aderencia') loadAderencia().catch((e) => toast(e.message, 'bad'));
+      if (tab === 'graficos') loadGraficos().catch((e) => toast(e.message, 'bad'));
+      pingPresenca(); // entrar/sair da aba Fotos entra e sai do aviso dos outros admins
     }
     document.querySelectorAll('.tabs button').forEach((b) => b.addEventListener('click', () => abrirAba(b.dataset.tab)));
     const abaAtiva = () => document.querySelector('.tabs button.active')?.dataset.tab;
@@ -386,45 +468,131 @@
     // sub-abas da aba Fotos: A avaliar (galeria foto-a-foto) / Aprovadas / Recusadas
     let fotoView = 'pendentes', subsCache = [], galIdx = 0, galId = null;
     const estadoDe = (s) => (s.validado === true ? 'aprovadas' : s.validado === false ? 'recusadas' : 'pendentes');
+    document.getElementById('f-ordem').onclick = () => {
+      filaAntigas = !filaAntigas;
+      const b = document.getElementById('f-ordem');
+      b.textContent = filaAntigas ? '⏳ Mais antigas primeiro' : '🆕 Mais recentes primeiro';
+      galId = null; galIdx = 0; // a fila mudou de sentido: recomeça do topo
+      loadPhotos().catch((e) => toast(e.message, 'bad'));
+    };
     document.querySelectorAll('#foto-subtabs button').forEach((b) => b.addEventListener('click', () => {
       fotoView = b.dataset.view;
       document.querySelectorAll('#foto-subtabs button').forEach((x) => {
         x.classList.toggle('active', x === b);
         x.setAttribute('aria-selected', String(x === b));
       });
-      renderFotos();
+      // cada sub-aba é uma consulta própria ao servidor agora (antes tudo vinha junto
+      // e a troca era só um filtro no navegador)
+      galId = null; galIdx = 0; subsCache = [];
+      loadPhotos().catch((e) => toast(e.message, 'bad'));
     }));
+    document.getElementById('btn-mais').onclick = () => loadPhotos({ mais: true }).catch((e) => toast(e.message, 'bad'));
 
     function query() {
       return new URLSearchParams({
         q: val('f-q'), regiao: val('f-regiao'), grupo: val('f-grupo'),
         preAvaliacao: val('f-nota'), promotor: val('f-promotor'),
         dataDe: val('f-de'), dataAte: val('f-ate'),
+        ordem: filaAntigas ? 'antigas' : '',
       });
     }
-    async function loadPhotos() {
-      subsCache = await api('/api/admin/submissions?' + query());
-      renderFotos();
+    // fila de atendimento: por padrão a mais antiga esperando vem primeiro, que é a
+    // ordem em que se quer avaliar (a foto do promotor que está esperando há mais tempo)
+    let filaAntigas = true;
+    // ---- presença: quem está em qual foto agora ----
+    // Só AVISA. Ninguém é impedido de avaliar — se o outro admin fechar o navegador,
+    // a foto não fica presa (o servidor descarta presença sem notícia há 30s).
+    let presencas = []; // [{nome, subId}] dos OUTROS admins
+    // só a galeria mostra isso: a fila "A avaliar" é sempre foto-a-foto, nunca em cards
+    function presencaAviso(id) {
+      const nomes = presencas.filter((p) => p.subId === id).map((p) => p.nome);
+      if (!nomes.length) return '';
+      const quem = nomes.length === 1 ? `<b>${esc(nomes[0])}</b> está` : `<b>${esc(nomes.join(' e '))}</b> estão`;
+      return `<div class="gal-presenca">👁 ${quem} nesta foto agora — para não avaliarem a mesma, use a seta ›</div>`;
     }
-    const pendentesAtuais = () => subsCache.filter((s) => estadoDe(s) === 'pendentes');
+    // manda "estou nesta foto" e recebe onde os outros estão. Chamado pelo polling de 10s
+    // que já existia (nenhum timer novo) e a cada troca de foto na galeria, pra reagir na hora.
+    async function pingPresenca() {
+      if (!eu('fotos')) return;
+      const naGaleria = abaAtiva() === 'fotos' && fotoView === 'pendentes' && !document.hidden ? (galId || '') : '';
+      try {
+        const r = await api('/api/admin/presenca', { method: 'POST', body: JSON.stringify({ subId: naGaleria }) });
+        const antes = JSON.stringify(presencas);
+        presencas = r.outros || [];
+        if (JSON.stringify(presencas) !== antes) renderFotos(); // só repinta quando algo mudou
+      } catch {}
+    }
+    // há quanto tempo a foto está esperando avaliação. Vira selo colorido: até 3 dias é
+    // normal, 3-7 chama atenção, acima de 7 está atrasado.
+    function esperaDe(s) {
+      const dias = Math.floor((Date.now() - new Date(s.createdAt)) / 86400000);
+      if (dias >= 1) return { txt: `há ${dias} dia${dias > 1 ? 's' : ''}`, dias };
+      const horas = Math.floor((Date.now() - new Date(s.createdAt)) / 3600000);
+      return { txt: horas >= 1 ? `há ${horas}h` : 'agora há pouco', dias: 0 };
+    }
+    function seloEspera(s) {
+      if (estadoDe(s) !== 'pendentes') return '';
+      const { txt, dias } = esperaDe(s);
+      const cor = dias >= 7 ? 'var(--red)' : dias >= 3 ? 'var(--amber)' : '';
+      return `<span class="pill" style="${cor ? `color:${cor};border-color:${cor};` : ''}" title="Enviada em ${new Date(s.createdAt).toLocaleString('pt-BR')}">⏳ esperando ${txt}</span>`;
+    }
+    // ---- carregamento paginado ----
+    // A tela pede só a sub-aba aberta, de 60 em 60. Antes ela baixava TODAS as fotos e
+    // separava no navegador — com 5 mil isso virava 5 MB e ~5s por abertura da aba.
+    // As contagens das sub-abas vêm prontas do servidor (contar é barato; devolver é que não).
+    let contagens = { pendentes: 0, aprovadas: 0, recusadas: 0, ranking: 0 }, temMais = false, carregando = false;
+    const PAGINA_TELA = 60; // mesmo tamanho de página do servidor
+    // atualiza só os contadores das sub-abas, sem mexer na lista já carregada
+    async function soContagens() {
+      const p = query();
+      p.set('limit', '1'); // o mínimo: o que interessa aqui é o bloco de contagens
+      const r = await api('/api/admin/submissions?' + p);
+      if (r.contagens) { contagens = r.contagens; renderFotos(); }
+    }
+    // cada sub-aba vira um filtro de estado no servidor
+    function filtroDaView() {
+      if (fotoView === 'pendentes') return { status: 'pendentes' };
+      if (fotoView === 'recusadas') return { status: 'recusados' };
+      if (fotoView === 'ranking') return { status: 'validados', preAvaliacao: 'EXCELENTE' };
+      // aprovadas: o filtro de "já baixada" é independente e vai em parâmetro próprio
+      const b = val('f-baixado');
+      return { status: 'validados', ...(b ? { baixado: b === 'baixados' ? 'sim' : 'nao' } : {}) };
+    }
+    async function loadPhotos({ mais = false } = {}) {
+      if (carregando) return;
+      carregando = true;
+      try {
+        const p = query();
+        for (const [k, v] of Object.entries(filtroDaView())) p.set(k, v);
+        p.set('skip', mais ? subsCache.length : 0);
+        const r = await api('/api/admin/submissions?' + p);
+        subsCache = mais ? subsCache.concat(r.itens) : r.itens;
+        temMais = r.temMais;
+        if (r.contagens) contagens = r.contagens;
+        renderFotos();
+      } finally { carregando = false; }
+    }
+    // a fila da galeria já vem só com pendentes do servidor
+    const pendentesAtuais = () => subsCache;
     function renderFotos() {
       // não re-renderiza por cima de quem está digitando uma observação (polling de 10s)
       if (document.activeElement && document.activeElement.matches('#tab-fotos textarea')) return;
-      const por = { pendentes: [], aprovadas: [], recusadas: [] };
-      subsCache.forEach((s) => por[estadoDe(s)].push(s));
-      ['pendentes', 'aprovadas', 'recusadas'].forEach((v) => (document.getElementById('cnt-' + v).textContent = por[v].length));
-      // candidatas ao ranking: aprovadas com nota EXCELENTE
-      const candidatas = por.aprovadas.filter((s) => s.preAvaliacao === 'EXCELENTE');
-      document.getElementById('cnt-ranking').textContent = candidatas.length;
-      let rows = fotoView === 'ranking' ? candidatas : por[fotoView];
-      if (fotoView === 'aprovadas' && val('f-baixado')) rows = rows.filter((s) => s.baixado === (val('f-baixado') === 'baixados'));
+      ['pendentes', 'aprovadas', 'recusadas', 'ranking'].forEach((v) =>
+        (document.getElementById('cnt-' + v).textContent = contagens[v] ?? 0));
+      const rows = subsCache;
+      const totalDaView = contagens[fotoView] ?? rows.length;
       const galeria = fotoView === 'pendentes';
       document.getElementById('f-baixado').classList.toggle('hidden', fotoView !== 'aprovadas');
       document.getElementById('fotos-acoes').classList.toggle('hidden', fotoView !== 'aprovadas');
       document.getElementById('link-ranking').classList.toggle('hidden', fotoView !== 'ranking');
       document.getElementById('galeria').classList.toggle('hidden', !galeria || !rows.length);
       document.getElementById('grid').classList.toggle('hidden', galeria);
-      document.getElementById('count').textContent = `${rows.length} foto(s)`;
+      // mostra o total de verdade, não só o que já foi baixado pra tela
+      document.getElementById('count').textContent = rows.length < totalDaView
+        ? `${rows.length} de ${totalDaView} foto(s)` : `${totalDaView} foto(s)`;
+      const btnMais = document.getElementById('btn-mais');
+      btnMais.classList.toggle('hidden', galeria || !temMais);
+      btnMais.textContent = `⬇ Carregar mais (${rows.length} de ${totalDaView})`;
       const vazio = {
         pendentes: '🎉 Nenhuma foto aguardando avaliação!',
         aprovadas: '🗂️ Nenhuma foto aprovada por aqui — ajuste os filtros ou avalie as pendentes.',
@@ -502,9 +670,10 @@
       box.innerHTML = `
         <div class="gal-top">
           <button class="ghost gal-seta" data-act="gal-nav" data-dir="-1" ${galIdx === 0 ? 'disabled' : ''} aria-label="Foto anterior (←)">‹</button>
-          <span class="count">Foto ${galIdx + 1} de ${rows.length}</span>
-          <button class="ghost gal-seta" data-act="gal-nav" data-dir="1" ${galIdx === rows.length - 1 ? 'disabled' : ''} aria-label="Próxima foto (→)">›</button>
+          <span class="count">Foto ${galIdx + 1} de ${contagens.pendentes || rows.length} ${seloEspera(s)}</span>
+          <button class="ghost gal-seta" data-act="gal-nav" data-dir="1" ${galIdx === rows.length - 1 && !temMais ? 'disabled' : ''} aria-label="Próxima foto (→)">›</button>
         </div>
+        ${presencaAviso(s.id)}
         <div class="gal-imgs">${imgs}</div>
         <div class="gal-meta">
           <b>${esc(s.cliente)}</b> · ${esc(s.regiao)}${s.grupo ? ' · ' + esc(s.grupo) : ''} · 📍 ${esc(s.endereco || '—')}<br>
@@ -520,16 +689,25 @@
             <button style="background:var(--green);" data-act="set-validado" data-id="${esc(s.id)}" data-val="1">✓ Aprovar foto</button>
             <button class="danger" data-act="set-validado" data-id="${esc(s.id)}" data-val="0">✗ Recusar foto</button>
           </div>
-          <textarea placeholder="observação (ex: motivo da recusa)..." data-act="set-obs" data-id="${esc(s.id)}">${esc(s.observacao)}</textarea>
+          ${motivosHTML(s, 12)}
+          <textarea placeholder="observação (ex: detalhe do motivo)..." data-act="set-obs" data-id="${esc(s.id)}">${esc(s.observacao)}</textarea>
           <div style="text-align:right;margin-top:6px;"><button class="ghost" style="font-size:11px;color:var(--red);" data-act="del-photo" data-id="${esc(s.id)}">🗑 Excluir foto</button></div>
         </div>`;
     }
-    function galNav(dir) {
+    async function galNav(dir) {
       const rows = pendentesAtuais();
       const novo = galIdx + dir;
-      if (novo < 0 || novo >= rows.length) return;
-      galIdx = novo; galId = rows[novo].id;
+      if (novo < 0) return;
+      // chegou no fim da página carregada: busca a próxima antes de avançar, pra a fila
+      // não parecer menor do que é (a lista vem de 60 em 60)
+      if (novo >= rows.length) {
+        if (!temMais) return;
+        await loadPhotos({ mais: true }).catch((e) => toast(e.message, 'bad'));
+        if (novo >= pendentesAtuais().length) return;
+      }
+      galIdx = novo; galId = pendentesAtuais()[novo].id;
       renderFotos();
+      pingPresenca(); // troquei de foto: os outros admins veem isso já no próximo ciclo deles
     }
     // setas do teclado navegam a galeria (fora de campos de texto)
     document.addEventListener('keydown', (e) => {
@@ -542,6 +720,18 @@
     // opções de ponto extra de uma foto: lista atual + pontos antigos que a foto já carrega
     // (ponto removido da lista continua visível nas fotos que o receberam)
     const pontosDaFoto = (s) => [...new Set([...ref.pontosExtra, ...(s.pontosExtra || [])])];
+    // mesma ideia pro motivo de recusa: motivo tirado da lista continua aparecendo na foto que o tem
+    const motivosDaFoto = (s) => [...new Set([...(ref.motivosRecusa || []), ...(s.motivoRecusa ? [s.motivoRecusa] : [])])];
+    // Os botões de motivo só aparecem quando a foto está recusada — antes disso não há o que explicar.
+    function motivosHTML(s, tam) {
+      if (s.validado !== false) return '';
+      const btns = motivosDaFoto(s).map((m) => {
+        const on = s.motivoRecusa === m;
+        return `<button class="${on ? 'danger' : 'ghost'}" style="font-size:${tam}px;" data-act="set-motivo" data-id="${esc(s.id)}" data-motivo="${esc(m)}" data-on="${on ? 1 : 0}">${esc(m)}</button>`;
+      }).join('');
+      return `<label>Motivo da recusa${s.motivoRecusa ? '' : ' <span style="color:var(--red)">— escolha um</span>'}</label>
+        <div class="toggles">${btns}</div>`;
+    }
     function photoCard(s) {
       const pontos = pontosDaFoto(s).map((p) => {
         const on = (s.pontosExtra || []).includes(p);
@@ -574,7 +764,8 @@
             <button class="${s.pago ? '' : 'ghost'}" style="font-size:11px;" data-act="set-pago" data-id="${esc(s.id)}" data-val="${s.pago ? 0 : 1}">${s.pago ? '💰 Pago' : 'Marcar pago'}</button>
           </div>
 
-          <textarea placeholder="observação (ex: motivo da recusa)..." data-act="set-obs" data-id="${esc(s.id)}">${esc(s.observacao)}</textarea>
+          ${motivosHTML(s, 11)}
+          <textarea placeholder="observação (ex: detalhe do motivo)..." data-act="set-obs" data-id="${esc(s.id)}">${esc(s.observacao)}</textarea>
           <div style="text-align:right;margin-top:6px;"><button class="ghost" style="font-size:11px;color:var(--red);" data-act="del-photo" data-id="${esc(s.id)}">🗑 Excluir foto</button></div>
         </div>
       </div>`;
@@ -589,9 +780,37 @@
       await api('/api/admin/submissions/' + id, { method: 'PATCH', body: JSON.stringify({ [field]: value }) });
       const s = subsCache.find((x) => x.id === id);
       if (s) s[field] = value; // cache em dia mesmo sem recarregar
+      // o servidor limpa o motivo ao aprovar — o cache tem que acompanhar, senão a tela
+      // segue mostrando um motivo que já não existe no banco
+      if (s && field === 'validado' && value === true) s.motivoRecusa = '';
       if (field === 'observacao') return toast('Observação salva');
-      if (field === 'validado') toast(value ? 'Foto aprovada ✓' : 'Foto recusada', value ? 'ok' : 'bad');
+      if (field === 'motivoRecusa') toast(value ? 'Motivo: ' + value : 'Motivo removido');
+      if (field === 'validado') {
+        toast(value ? 'Foto aprovada ✓' : 'Foto recusada — escolha o motivo', value ? 'ok' : 'bad');
+        // a lista agora vem filtrada por estado do servidor: avaliar uma foto tira ela
+        // desta sub-aba. Antes isso acontecia sozinho, porque tudo estava carregado.
+        if (s) tiraDaView(s);
+      }
       renderFotos(); // o cache já está em dia; o polling de 10s sincroniza o resto
+    }
+    // remove do cache a foto que deixou de pertencer à sub-aba aberta e acerta os contadores
+    // na hora (o polling de 10s reconfere com o servidor depois)
+    function tiraDaView(s) {
+      const destino = estadoDe(s);
+      const saiu = fotoView === 'pendentes' ? destino !== 'pendentes'
+        : fotoView === 'recusadas' ? destino !== 'recusadas'
+        : fotoView === 'aprovadas' ? destino !== 'aprovadas'
+        : fotoView === 'ranking' ? !(destino === 'aprovadas' && s.preAvaliacao === 'EXCELENTE') : false;
+      if (!saiu) return;
+      const i = subsCache.findIndex((x) => x.id === s.id);
+      if (i >= 0) subsCache.splice(i, 1);
+      if (contagens[fotoView] > 0) contagens[fotoView]--;
+      if (contagens[destino] !== undefined) contagens[destino]++;
+      // a galeria segue na mesma posição — quem entra no lugar é a próxima da fila
+      if (galIdx >= subsCache.length) galIdx = Math.max(0, subsCache.length - 1);
+      galId = subsCache[galIdx] ? subsCache[galIdx].id : null;
+      // repõe a página quando ela esvazia e ainda há fila no servidor
+      if (!subsCache.length && temMais) loadPhotos().catch(() => {});
     }
     async function togPonto(id, ponto, add) {
       const s = subsCache.find((x) => x.id === id);
@@ -893,18 +1112,42 @@
     }
 
     // ---- listas ----
-    let promFilter = '';
-    document.getElementById('prom-search').addEventListener('input', (e) => { promFilter = e.target.value.toLowerCase(); renderLists(); });
+    let promFilter = '', promTimer;
+    // o filtro agora consulta o servidor (é lá que mora o grupo) — sem debounce seria
+    // uma requisição por tecla digitada
+    document.getElementById('prom-search').addEventListener('input', (e) => {
+      promFilter = e.target.value.toLowerCase();
+      clearTimeout(promTimer);
+      promTimer = setTimeout(() => renderPromotores().catch(() => {}), 300);
+    });
     function renderLists() {
       document.getElementById('list-pontos').innerHTML = ref.pontosExtra.map((v) =>
         `<div class="list-item"><span><span class="ponto-dot" style="background:${corPonto(v)}"></span>${esc(v)}</span><button class="danger" data-act="del-item" data-type="pontosExtra" data-value="${esc(v)}">×</button></div>`).join('')
         || '<div class="muted">Nenhum ponto extra cadastrado — a avaliação fica só com a nota.</div>';
+      document.getElementById('list-motivos').innerHTML = (ref.motivosRecusa || []).map((v) =>
+        `<div class="list-item"><span>${esc(v)}</span><button class="danger" data-act="del-item" data-type="motivosRecusa" data-value="${esc(v)}">×</button></div>`).join('')
+        || '<div class="muted">Nenhum motivo cadastrado — quem recusar não terá o que escolher.</div>';
       document.getElementById('list-grupos').innerHTML = ref.grupos.map((v) =>
         `<div class="list-item"><span>${esc(v)}</span><button class="danger" data-act="del-item" data-type="grupos" data-value="${esc(v)}">×</button></div>`).join('');
-      const proms = ref.promotores.filter((p) => p.toLowerCase().includes(promFilter)).slice(0, 200);
-      document.getElementById('list-promotores').innerHTML = proms.map((v) =>
-        `<div class="list-item"><span>${esc(v)}</span><button class="danger" data-act="del-item" data-type="promotores" data-value="${esc(v)}">×</button></div>`).join('')
-        + (ref.promotores.filter((p) => p.toLowerCase().includes(promFilter)).length > 200 ? '<div class="muted">...filtre pra ver mais</div>' : '');
+      renderPromotores().catch(() => {});
+    }
+    // o banco de promotores vem de uma rota própria porque o /api/reference só traz os NOMES
+    // (lá o payload vai pra todo mundo no boot; o grupo é assunto de admin)
+    async function renderPromotores() {
+      const box = document.getElementById('list-promotores');
+      const r = await api('/api/admin/ref/promotores?limit=200&q=' + encodeURIComponent(promFilter));
+      document.getElementById('prom-sem-grupo').innerHTML = r.semGrupo
+        ? `<b style="color:var(--amber)">${r.semGrupo}</b> sem grupo — enquanto estiverem assim, o grupo deles não tem % de participação.`
+        : (r.total ? '<span style="color:var(--green)">Todos com grupo ✓</span>' : '');
+      box.innerHTML = r.promotores.map((p) => `
+        <div class="list-item">
+          <span style="flex:1;min-width:0;">${esc(p.nome)}</span>
+          <input list="grupos-dl-adm" value="${esc(p.grupo)}" placeholder="sem grupo"
+            data-act="set-prom-grupo" data-nome="${esc(p.nome)}"
+            style="flex:0 0 150px;font-size:12px;padding:4px 6px;${p.grupo ? '' : 'border-color:var(--amber);'}" />
+          <button class="danger" data-act="del-item" data-type="promotores" data-value="${esc(p.nome)}">×</button>
+        </div>`).join('')
+        + (r.total > r.promotores.length ? `<div class="muted">...mostrando ${r.promotores.length} de ${r.total} — filtre pra ver os outros</div>` : '');
     }
     document.querySelectorAll('[data-add]').forEach((btn) => btn.onclick = async () => {
       const type = btn.dataset.add, input = document.getElementById('add-' + type);
@@ -916,6 +1159,15 @@
       ref[type] = await api('/api/admin/ref/' + type, { method: 'DELETE', body: JSON.stringify({ value }) });
       renderLists(); refreshGrupoFilter();
     }
+    // grupo de um promotor do banco. A rota de adicionar já serve: nome que existe só tem o
+    // grupo atualizado. Grupo em branco = tirar do grupo.
+    async function setPromotorGrupo(nome, grupo) {
+      try {
+        await api('/api/admin/ref/promotores', { method: 'POST', body: JSON.stringify({ value: nome, grupo }) });
+        toast(grupo.trim() ? `${nome} → ${grupo.trim()}` : `${nome} ficou sem grupo`);
+        renderPromotores().catch(() => {});
+      } catch (e) { toast(e.message, 'bad'); }
+    }
     function refreshGrupoFilter() {
       const sel = document.getElementById('f-grupo'), atual = sel.value;
       sel.innerHTML = '<option value="">Todos grupos</option>' + ref.grupos.map((g) => `<option ${g === atual ? 'selected' : ''}>${esc(g)}</option>`).join('');
@@ -926,10 +1178,19 @@
       const n = ref.promotores.length;
       if (!n) return toast('O banco de promotores já está vazio', 'bad');
       const resp = prompt(`⚠ Isso apaga TODOS os ${n} nomes do banco de promotores — sem volta.\n` +
-        'Um backup .csv com os nomes será baixado antes, por segurança.\n\nDigite APAGAR para confirmar:');
+        'Um backup .csv com nome + grupo será baixado antes, por segurança.\n\nDigite APAGAR para confirmar:');
       if ((resp || '').trim().toUpperCase() !== 'APAGAR') return;
+      // backup COM o grupo: apagar o banco leva junto o cadastro de quem é de qual grupo, que é
+      // o denominador da aderência — perder isso sem cópia seria bem pior que perder só os nomes
+      let backup;
+      try { backup = await api('/api/admin/ref/promotores?limit=5000'); }
+      catch (e) { return toast('Não consegui baixar o backup — nada foi apagado. ' + e.message, 'bad'); }
+      if (backup.promotores.length < backup.total)
+        return toast(`O backup sairia incompleto (${backup.promotores.length} de ${backup.total}) — nada foi apagado.`, 'bad');
       // backup automático antes de apagar (BOM: acentos certos no Excel)
-      const csv = '\uFEFF' + 'Promotor\n' + ref.promotores.join('\n'); // BOM: acentos certos no Excel
+      // t\u00EDtulos iguais aos do modelo de import, pra dar pra reimportar o backup direto
+      const csv = '\uFEFF' + 'Promotores;Grupo do Promotor\n' + // BOM: acentos certos no Excel
+        backup.promotores.map((p) => `${p.nome};${p.grupo}`).join('\n');
       const a = document.createElement('a');
       a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
       a.download = 'backup-promotores-' + new Date().toISOString().slice(0, 10) + '.csv';
@@ -965,7 +1226,8 @@
         const box = document.getElementById('ref-import-result');
         box.classList.remove('hidden');
         box.innerHTML = `<b>Resultado:</b> Grupos: ${r.grupos.novos} novo(s), ${r.grupos.jaExistiam} já na lista · ` +
-          `Promotores: ${r.promotores.novos} novo(s), ${r.promotores.jaExistiam} já no banco.`;
+          `Promotores: ${r.promotores.novos} novo(s), ${r.promotores.jaExistiam} já no banco` +
+          (r.promotores.grupoAtualizado ? ` · <b>${r.promotores.grupoAtualizado}</b> com o grupo atualizado` : '') + '.';
         toast(`${r.grupos.novos + r.promotores.novos} nome(s) adicionado(s)`, 'ok');
         // recarrega a referência pra tudo refletir na hora (listas, filtros, contador)
         ref = await api('/api/reference');
@@ -1083,6 +1345,36 @@
         <span class="kpi-sub">${detalhe || ''}</span>
       </div>`;
     }
+    // "45,5%" — e "—" quando não dá pra calcular (grupo sem ninguém cadastrado)
+    const pctN = (v) => (v === null || v === undefined ? '—' : String(v).replace('.', ',') + '%');
+    // uma linha de grupo: cadastro + as duas barras na mesma escala de 0 a 100%
+    function adGrupoLinha(g) {
+      const barra = (classe, rotulo, valor, n) => `
+        <div class="ad-metrica">
+          <span>${rotulo}</span>
+          <div class="ad-trilho ${classe}"><i style="width:${valor === null ? 0 : valor}%"></i></div>
+          <span>${pctN(valor)} · ${n}</span>
+        </div>`;
+      return `<div class="ad-grupo">
+        <div class="ad-grupo-top">
+          <b>${esc(g.grupo)}</b>
+          <span class="muted">${g.roster} cadastrado(s) · ${g.fotos} foto(s)${g.pontoMaisComum ? ` · ⭐ ${esc(g.pontoMaisComum)}` : ''}</span>
+        </div>
+        ${barra('part', 'Participação', g.participacaoPct, g.participaram)}
+        ${barra('assert', 'Assertividade', g.assertividadePct, g.comValidada)}
+      </div>`;
+    }
+    // ranking simples com barra proporcional ao 1º colocado
+    function adRanking(itens, { rotulo, valor, detalhe, vazio }) {
+      if (!itens.length) return `<div class="muted">${vazio}</div>`;
+      const max = valor(itens[0]) || 1;
+      return itens.map((it) => `
+        <div class="ad-item">
+          <b>${esc(rotulo(it))}</b>
+          <span class="ad-item-num">${detalhe(it)}</span>
+          <div class="ad-trilho part"><i style="width:${Math.max(2, Math.round((valor(it) / max) * 100))}%"></i></div>
+        </div>`).join('');
+    }
     // linha de ranking com barrinha proporcional ao 1º colocado
     function adLinhas(itens, rotulo) {
       if (!itens.length) return '<div class="muted">Nenhum envio no período.</div>';
@@ -1108,6 +1400,7 @@
         const p = r.promotores, f = r.fotos;
         document.getElementById('ad-periodo').textContent =
           `${dataBR(r.periodo.de)} → ${dataBR(r.periodo.ate)}`;
+        const mr = r.motivosRecusa, pe = r.pontosExtra;
         document.getElementById('ad-kpis').innerHTML =
           kpi('Base de promotores', base,
             `${r.base.banco} no banco de nomes · ${r.base.contasAtivas} conta(s) ativa(s)`) +
@@ -1117,14 +1410,56 @@
             dosParticipantes(p.comFotoValidada, p.participantes), 'var(--green)') +
           kpi('Promotores pagos', p.pagos,
             dosParticipantes(p.pagos, p.participantes), 'var(--purple)') +
-          kpi('Região mais ativa', r.regioes.length ? esc(r.regioes[0].nome) : '—',
-            r.regioes.length ? `${r.regioes[0].promotores} promotor(es) · ${r.regioes[0].fotos} foto(s)` : 'sem envios') +
-          kpi('Grupo mais ativo', r.grupos.length ? esc(r.grupos[0].grupo) : '—',
-            r.grupos.length ? `${r.grupos[0].promotores} promotor(es) · ${r.grupos[0].fotos} foto(s)` : 'sem envios');
+          kpi('Grupos', `${r.base.gruposComCadastro}/${r.base.gruposTotal}`,
+            `com cadastro de promotores · ${r.base.promotoresComGrupo} nome(s) em algum grupo`) +
+          kpi('Fotos EXCELENTE', f.excelentes,
+            f.total ? `${pct(f.excelentes, f.total)} das fotos do período` : 'sem fotos no período', 'var(--purple)') +
+          kpi('Motivo nº 1 de recusa', mr.itens.length ? esc(mr.itens[0].motivo) : '—',
+            mr.itens.length ? `${mr.itens[0].n} de ${f.recusadas} recusa(s)` : 'nenhuma recusa com motivo', 'var(--red)') +
+          kpi('Ponto extra mais usado', pe.itens.length ? esc(pe.itens[0].ponto) : '—',
+            pe.itens.length ? `em ${pe.itens[0].total} foto(s)` : 'nenhum ponto marcado');
         document.getElementById('ad-rodape').innerHTML =
           `<b>${f.total}</b> foto(s) no período — ${f.validadas} aprovada(s), ${f.recusadas} recusada(s), ` +
           `${f.pendentes} ainda a avaliar · ${f.pagas} já paga(s).` +
           (f.semGrupo ? ` <span class="muted">(${f.semGrupo} sem grupo informado — fora do ranking de grupos.)</span>` : '');
+
+        // ---- grupos pelo cadastro ----
+        document.getElementById('ad-grupos-cad').innerHTML = r.gruposCadastrados.length
+          ? r.gruposCadastrados.map(adGrupoLinha).join('')
+          : '<div class="muted">Nenhum promotor do banco tem grupo cadastrado ainda — sem isso não dá pra saber o tamanho de cada grupo. Preencha o <b>Grupo do Promotor</b> na aba Listas (ou pela planilha).</div>';
+        document.getElementById('ad-grupos-aviso').innerHTML = p.semCadastroDeGrupo
+          ? `⚠️ <b>${p.semCadastroDeGrupo}</b> promotor(es) enviaram foto mas não têm grupo no cadastro — ficaram fora destes percentuais.`
+          : '';
+
+        // ---- motivos de recusa ----
+        document.getElementById('ad-motivos').innerHTML = adRanking(mr.itens, {
+          rotulo: (m) => m.motivo, valor: (m) => m.n,
+          detalhe: (m) => `${m.n} · ${pct(m.n, f.recusadas)}`,
+          vazio: 'Nenhuma recusa com motivo no período.',
+        });
+        document.getElementById('ad-motivos-aviso').innerHTML = mr.semMotivo
+          ? `⚠️ <b>${mr.semMotivo}</b> recusa(s) sem motivo escolhido — não entram nesta conta. O motivo é um botão na hora de recusar.`
+          : (mr.itens.length ? 'Todas as recusas do período têm motivo ✓' : '');
+
+        // ---- pontos extra ----
+        document.getElementById('ad-pontos').innerHTML = adRanking(pe.itens, {
+          rotulo: (x) => x.ponto, valor: (x) => x.total,
+          detalhe: (x) => `${x.total} foto(s) · ${x.aprovacaoPct === null ? 'sem avaliação' : pctN(x.aprovacaoPct) + ' aprovado'}`,
+          vazio: 'Nenhum ponto extra marcado no período.',
+        });
+        document.getElementById('ad-pontos-aviso').innerHTML = pe.menosAprovado
+          ? `👎 <b>Menos aprovado:</b> ${esc(pe.menosAprovado.ponto)} — ${pctN(pe.menosAprovado.aprovacaoPct)} de aprovação em ${pe.menosAprovado.avaliadas} foto(s) avaliada(s).`
+          : `<span class="muted">Nenhum ponto tem ${pe.minimoPraRanquear} fotos avaliadas ainda — pouco pra apontar o menos aprovado sem chutar.</span>`;
+
+        // ---- mais recusados ----
+        const recusados = (itens) => adRanking(itens, {
+          rotulo: (x) => x.nome, valor: (x) => x.recusadas,
+          detalhe: (x) => `${x.recusadas} de ${x.fotos} · ${pct(x.recusadas, x.fotos)}`,
+          vazio: 'Nenhuma recusa no período 🎉',
+        });
+        document.getElementById('ad-rec-promotores').innerHTML = recusados(r.topRecusados.promotores);
+        document.getElementById('ad-rec-clientes').innerHTML = recusados(r.topRecusados.clientes);
+
         document.getElementById('ad-regioes').innerHTML = adLinhas(r.regioes, (x) => `${x.nome} (${x.sigla || '—'})`);
         document.getElementById('ad-grupos').innerHTML = adLinhas(r.grupos, (x) => x.grupo);
       } finally { btn.disabled = false; btn.textContent = 'Atualizar'; }
@@ -1132,6 +1467,231 @@
     document.getElementById('ad-aplicar').onclick = () => loadAderencia().catch((e) => toast(e.message, 'bad'));
     ['ad-de', 'ad-ate'].forEach((id) =>
       document.getElementById(id).addEventListener('change', () => loadAderencia().catch((e) => toast(e.message, 'bad'))));
+
+    // ================= GRÁFICOS =================
+    // SVG escrito à mão: a CSP da aplicação só libera 'self', então nada de biblioteca
+    // externa — e o projeto não tem build pra vendorizar uma. São dois desenhos (linha e
+    // barra) com a mesma moldura, escala e camada de interação.
+    // A geometria é recalculada a cada desenho porque o SVG escala junto com a tela: num
+    // celular de 375px o viewBox de 760 encolhe pra 40%, e um texto de 11px viraria 4px.
+    // Em tela estreita o desenho fica mais "alto" e as fontes maiores em unidades de
+    // viewBox — depois de encolher, dá o mesmo tamanho aparente do desktop.
+    let G = { w: 760, h: 250, ml: 46, mr: 14, mt: 14, mb: 30, fonte: 11 };
+    let gx0, gx1, gy0, gy1, gLarg, gAlt;
+    function gGeometria(box) {
+      const larguraReal = Math.max(240, box.clientWidth || 760);
+      const estreito = larguraReal < 620;
+      const escala = G.w / larguraReal; // quanto o viewBox encolhe na tela
+      G = { w: 760, h: estreito ? 420 : 250, ml: estreito ? 66 : 46, mr: 14, mt: 14,
+            mb: estreito ? 46 : 30, fonte: Math.round(11 * (estreito ? escala : 1)) };
+      gx0 = G.ml; gx1 = G.w - G.mr; gy0 = G.mt; gy1 = G.h - G.mb;
+      gLarg = gx1 - gx0; gAlt = gy1 - gy0;
+      // um rótulo a cada ~58px de tela — abaixo disso eles começam a se encostar
+      return Math.max(2, Math.floor(larguraReal / 58));
+    }
+    let gMaxRotulos = 12;
+
+    // topo "redondo" da escala: 47 vira 50, 380 vira 400 — eixo com número quebrado
+    // é ruído, e a leitura do gráfico não melhora em nada com ele
+    function escalaMax(valores) {
+      const bruto = Math.max(1, ...valores.filter((v) => v !== null && v !== undefined));
+      const passo = Math.pow(10, Math.floor(Math.log10(bruto)));
+      return Math.ceil(bruto / (passo / 2)) * (passo / 2);
+    }
+    // "2026-W18" → "S18" · "2026-07" → "jul/26"
+    function rotuloBalde(chave, por) {
+      if (por === 'mes') {
+        const [a, m] = chave.split('-');
+        return new Date(Number(a), Number(m) - 1, 1).toLocaleDateString('pt-BR', { month: 'short' }).replace('.', '') + '/' + a.slice(2);
+      }
+      return 'S' + chave.split('-W')[1];
+    }
+    const gEscY = (v, max) => gy1 - (v / max) * gAlt;
+    // com muitos baldes, mostra só alguns rótulos — senão eles se sobrepõem e viram borrão
+    const passoRotulo = (n) => Math.ceil(n / gMaxRotulos);
+
+    // moldura comum: linhas de grade recuadas + números do eixo Y + rótulos do X
+    function gMoldura(pontos, max, por, sufixo = '') {
+      const linhas = [0, 0.25, 0.5, 0.75, 1].map((f) => {
+        const v = max * f, y = gEscY(v, max);
+        const num = sufixo === '%' ? Math.round(v) : (v >= 1000 ? (v / 1000).toFixed(1).replace('.0', '').replace('.', ',') + 'k' : Math.round(v));
+        return `<line x1="${gx0}" y1="${y}" x2="${gx1}" y2="${y}" />
+          <text class="graf-eixo" font-size="${G.fonte}" x="${gx0 - 8}" y="${y + G.fonte / 3}" text-anchor="end">${num}${sufixo}</text>`;
+      }).join('');
+      const passo = passoRotulo(pontos.length);
+      const xs = pontos.map((p, i) => {
+        if (i % passo !== 0 && i !== pontos.length - 1) return '';
+        const x = pontos.length === 1 ? (gx0 + gx1) / 2 : gx0 + (i / (pontos.length - 1)) * gLarg;
+        return `<text class="graf-eixo" font-size="${G.fonte}" x="${x}" y="${gy1 + G.fonte + 6}" text-anchor="middle">${esc(rotuloBalde(p.chave, por))}</text>`;
+      }).join('');
+      return `<g class="graf-grid">${linhas}</g>${xs}`;
+    }
+    const gPosX = (i, n) => (n === 1 ? (gx0 + gx1) / 2 : gx0 + (i / (n - 1)) * gLarg);
+
+    // ---- gráfico de linha (1 ou mais séries na MESMA unidade) ----
+    // Nunca dois eixos Y: séries de unidades diferentes vão pra gráficos separados.
+    function grafLinha(alvo, pontos, series, { por, sufixo = '', maxFixo } = {}) {
+      const box = document.getElementById(alvo);
+      if (!pontos.length) { box.innerHTML = '<div class="graf-vazio">Sem dados no período.</div>'; return; }
+      gMaxRotulos = gGeometria(box);
+      const max = maxFixo || escalaMax(pontos.flatMap((p) => series.map((s) => p[s.campo])));
+      const caminho = (s) => {
+        // trecho quebrado quando o valor é null (ex: semana sem nenhuma foto avaliada):
+        // ligar os dois lados fingiria um dado que não existe
+        let d = '', abriu = false;
+        pontos.forEach((p, i) => {
+          const v = p[s.campo];
+          if (v === null || v === undefined) { abriu = false; return; }
+          const x = gPosX(i, pontos.length), y = gEscY(v, max);
+          d += (abriu ? 'L' : 'M') + x.toFixed(1) + ' ' + y.toFixed(1) + ' ';
+          abriu = true;
+        });
+        return d;
+      };
+      const linhas = series.map((s) => `<path class="graf-serie" d="${caminho(s)}" stroke="${s.cor}" />`).join('');
+      // ponto único não desenha linha nenhuma — vira marcador, senão o gráfico fica vazio
+      const solitarios = pontos.length === 1
+        ? series.map((s) => `<circle class="graf-ponto" cx="${gPosX(0, 1)}" cy="${gEscY(pontos[0][s.campo] || 0, max)}" r="5" fill="${s.cor}" />`).join('')
+        : '';
+      box.innerHTML = gLegenda(series) +
+        `<div class="graf">
+          <svg viewBox="0 0 ${G.w} ${G.h}" role="img" aria-label="${esc(series.map((s) => s.nome).join(', '))} ao longo do tempo">
+            ${gMoldura(pontos, max, por, sufixo)}
+            ${linhas}${solitarios}
+            <g class="graf-hover"></g>
+            <rect x="${gx0}" y="${gy0}" width="${gLarg}" height="${gAlt}" fill="transparent" />
+          </svg>
+          <div class="graf-dica"></div>
+        </div>` + gTabela(pontos, series, por, sufixo);
+      gInteracao(box, pontos, series, { max, sufixo, linha: true });
+    }
+
+    // ---- gráfico de barras (uma série) ----
+    function grafBarras(alvo, pontos, serie, { por } = {}) {
+      const box = document.getElementById(alvo);
+      if (!pontos.length) { box.innerHTML = '<div class="graf-vazio">Sem dados no período.</div>'; return; }
+      gMaxRotulos = gGeometria(box);
+      const max = escalaMax(pontos.map((p) => p[serie.campo]));
+      const fatia = gLarg / pontos.length;
+      const larg = Math.max(2, fatia - 2); // 2px de respiro entre barras vizinhas
+      const barras = pontos.map((p, i) => {
+        const v = p[serie.campo] || 0;
+        const y = gEscY(v, max), x = gx0 + i * fatia + (fatia - larg) / 2;
+        return `<rect class="graf-barra" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${larg.toFixed(1)}" height="${Math.max(0, gy1 - y).toFixed(1)}" fill="${serie.cor}" />`;
+      }).join('');
+      box.innerHTML = `<div class="graf">
+          <svg viewBox="0 0 ${G.w} ${G.h}" role="img" aria-label="${esc(serie.nome)} por período">
+            ${gMoldura(pontos, max, por)}
+            ${barras}
+            <g class="graf-hover"></g>
+            <rect x="${gx0}" y="${gy0}" width="${gLarg}" height="${gAlt}" fill="transparent" />
+          </svg>
+          <div class="graf-dica"></div>
+        </div>` + gTabela(pontos, [serie], por, '');
+      gInteracao(box, pontos, [serie], { max, sufixo: '', linha: false });
+    }
+
+    // legenda: com 2+ séries ela é obrigatória — a cor nunca é a única pista de identidade
+    const gLegenda = (series) => (series.length < 2 ? '' :
+      `<div class="graf-legenda">${series.map((s) => `<span><i style="background:${s.cor}"></i>${esc(s.nome)}</span>`).join('')}</div>`);
+
+    // os mesmos dados em tabela, pra quem lê com leitor de tela ou quer o número exato
+    function gTabela(pontos, series, por, sufixo) {
+      const cab = series.map((s) => `<th>${esc(s.nome)}</th>`).join('');
+      const linhas = pontos.map((p) => `<tr><td>${esc(rotuloBalde(p.chave, por))}</td>${
+        series.map((s) => `<td>${p[s.campo] === null ? '—' : String(p[s.campo]).replace('.', ',') + sufixo}</td>`).join('')}</tr>`).join('');
+      return `<details class="graf-tabela"><summary>Ver os números em tabela</summary>
+        <table><thead><tr><th>Período</th>${cab}</tr></thead><tbody>${linhas}</tbody></table></details>`;
+    }
+
+    // camada de interação: cursor + balão seguindo o balde mais próximo do mouse/dedo
+    function gInteracao(box, pontos, series, { max, sufixo, linha }) {
+      const svg = box.querySelector('svg'), dica = box.querySelector('.graf-dica'), hover = box.querySelector('.graf-hover');
+      if (!svg) return;
+      const graf = box.querySelector('.graf');
+      // retrato da geometria no momento do desenho: os globais mudam quando o próximo
+      // gráfico é montado, e o balão deste aqui precisa das medidas COM QUE ele foi feito
+      const geo = { w: G.w, x0: gx0, y0: gy0, y1: gy1, larg: gLarg, alt: gAlt };
+      const escY = (v) => geo.y1 - (v / max) * geo.alt;
+      const posX = (i) => (pontos.length === 1 ? (geo.x0 + geo.x0 + geo.larg) / 2 : geo.x0 + (i / (pontos.length - 1)) * geo.larg);
+      const sair = () => { dica.style.opacity = 0; hover.innerHTML = ''; };
+      const mover = (ev) => {
+        const r = svg.getBoundingClientRect();
+        const cliente = ev.touches ? ev.touches[0] : ev;
+        const xSvg = ((cliente.clientX - r.left) / r.width) * geo.w; // tela → coordenada do viewBox
+        const fatia = pontos.length === 1 ? geo.larg : geo.larg / (pontos.length - 1);
+        let i = linha ? Math.round((xSvg - geo.x0) / fatia) : Math.floor((xSvg - geo.x0) / (geo.larg / pontos.length));
+        i = Math.max(0, Math.min(pontos.length - 1, i));
+        const p = pontos[i];
+        const x = linha ? posX(i) : geo.x0 + (i + 0.5) * (geo.larg / pontos.length);
+        hover.innerHTML = `<line class="graf-cursor" x1="${x}" y1="${geo.y0}" x2="${x}" y2="${geo.y1}" />` +
+          (linha ? series.filter((s) => p[s.campo] !== null && p[s.campo] !== undefined)
+            .map((s) => `<circle class="graf-ponto" cx="${x}" cy="${escY(p[s.campo])}" r="5" fill="${s.cor}" />`).join('') : '');
+        const porDaChave = String(p.chave).includes('-W') ? 'semana' : 'mes';
+        dica.innerHTML = `<b>${esc(rotuloBalde(p.chave, porDaChave))}</b>` +
+          series.map((s) => `<div><u style="background:${s.cor}"></u>${esc(s.nome)}: <b style="display:inline">${p[s.campo] === null ? '—' : String(p[s.campo]).replace('.', ',') + sufixo}</b></div>`).join('');
+        // o balão acompanha o cursor mas nunca sai pela borda do card
+        const xPx = (x / geo.w) * r.width;
+        dica.style.opacity = 1;
+        dica.style.left = Math.max(0, Math.min(xPx + 14, graf.clientWidth - dica.offsetWidth)) + 'px';
+        dica.style.top = '8px';
+      };
+      svg.addEventListener('mousemove', mover);
+      svg.addEventListener('mouseleave', sair);
+      svg.addEventListener('touchstart', mover, { passive: true });
+      svg.addEventListener('touchmove', mover, { passive: true });
+      svg.addEventListener('touchend', sair);
+    }
+
+    // ---- carregamento da aba ----
+    // cores validadas com o script de paleta (separação em daltonismo verificada, não chutada)
+    const SERIES_VOLUME = [
+      { campo: 'fotos', nome: 'Fotos enviadas', cor: '#1c9cc0' },
+      { campo: 'recusadas', nome: 'Recusadas', cor: '#d9534f' },
+      { campo: 'excelentes', nome: 'Excelentes', cor: '#7b3fbf' },
+    ];
+    let grPor = 'semana';
+    let grUltimo = null; // última resposta do servidor, guardada pra redesenhar no resize
+    function grBotoes() {
+      document.getElementById('gr-btn-semana').classList.toggle('secondary', grPor !== 'semana');
+      document.getElementById('gr-btn-mes').classList.toggle('secondary', grPor !== 'mes');
+    }
+    // desenha os três a partir da mesma resposta (também usado ao redimensionar a janela)
+    function grDesenha(r) {
+      grafLinha('gr-volume', r.pontos, SERIES_VOLUME, { por: r.por });
+      grafBarras('gr-participacao', r.pontos, { campo: 'promotores', nome: 'Promotores', cor: '#1c9cc0' }, { por: r.por });
+      grafLinha('gr-aprovacao', r.pontos, [{ campo: 'aprovacaoPct', nome: 'Aprovação', cor: '#2f9e54' }],
+        { por: r.por, sufixo: '%', maxFixo: 100 });
+    }
+    async function loadGraficos() {
+      const btn = document.getElementById('gr-aplicar');
+      btn.disabled = true; btn.textContent = '⏳';
+      try {
+        const p = new URLSearchParams({ por: grPor });
+        if (val('gr-de')) p.set('de', val('gr-de'));
+        if (val('gr-ate')) p.set('ate', val('gr-ate'));
+        const r = await api('/api/admin/series?' + p);
+        // o servidor decide o período quando os campos estão vazios — reflete de volta na tela
+        document.getElementById('gr-de').value = r.periodo.de || '';
+        document.getElementById('gr-ate').value = r.periodo.ate || '';
+        document.getElementById('gr-periodo').textContent =
+          `${dataBR(r.periodo.de)} → ${dataBR(r.periodo.ate)} · ${r.pontos.length} ${r.por === 'mes' ? 'mês(es)' : 'semana(s)'}`;
+        grUltimo = r;
+        grDesenha(r);
+        grBotoes();
+      } finally { btn.disabled = false; btn.textContent = 'Atualizar'; }
+    }
+    document.getElementById('gr-aplicar').onclick = () => loadGraficos().catch((e) => toast(e.message, 'bad'));
+    ['gr-de', 'gr-ate'].forEach((id) =>
+      document.getElementById(id).addEventListener('change', () => loadGraficos().catch((e) => toast(e.message, 'bad'))));
+    // girar o celular ou mudar a janela troca a geometria (altura e tamanho de fonte do
+    // viewBox) — sem redesenhar, o gráfico fica com as medidas da largura anterior
+    let grResizeTimer;
+    window.addEventListener('resize', () => {
+      if (abaAtiva() !== 'graficos' || !grUltimo) return;
+      clearTimeout(grResizeTimer);
+      grResizeTimer = setTimeout(() => grDesenha(grUltimo), 200);
+    });
 
     // ---- crachá de acesso total ----
     let crachaCodigo = '';
@@ -1179,7 +1739,12 @@
       if (eu('aprovar')) loadPendentes().catch(() => {});
       if (abaAtiva() === 'promotores' && eu('contas') && editingId === null && permEditingId === null) loadUsers().catch(() => {});
       else if (eu('contas')) refreshContasBadge(); // fora da aba Contas, só a contagem (payload mínimo)
-      if (abaAtiva() === 'fotos' && eu('fotos')) loadPhotos().catch(() => {});
+      // recarregar a lista inteira jogaria fora as páginas que o admin já puxou com
+      // "carregar mais" — quando ele passou da 1ª página, o polling só atualiza os números
+      if (abaAtiva() === 'fotos' && eu('fotos')) {
+        (subsCache.length > PAGINA_TELA ? soContagens() : loadPhotos()).catch(() => {});
+      }
+      pingPresenca();
     }, 10000);
     setInterval(async () => {
       if (document.hidden) return;
@@ -1214,6 +1779,7 @@
           }
           return setField(d.id, 'validado', d.val === '1');
         }
+        case 'set-motivo': return setField(d.id, 'motivoRecusa', d.on === '1' ? '' : d.motivo); // clicar de novo desmarca
         case 'set-pago': return setField(d.id, 'pago', d.val === '1');
         case 'del-photo': return delPhoto(d.id);
         case 'toggle-ban': return toggleBan(d.id, d.nome, d.banido === '1');
@@ -1230,6 +1796,14 @@
         case 'del-senha': return delSenha(d.tipo, d.inicio);
         case 'set-ranking': return setRankingPos(d.id, d.on === '1' ? null : Number(d.pos)); // clicar de novo tira a medalha
         case 'ad-meses': { setPeriodo(Number(d.meses)); return loadAderencia().catch((err) => toast(err.message, 'bad')); }
+        case 'gr-por': {
+          if (d.por === grPor) return;
+          grPor = d.por;
+          // trocar de granularidade também troca a janela padrão (12 meses x 3 meses),
+          // então limpa as datas e deixa o servidor escolher a que faz sentido
+          document.getElementById('gr-de').value = ''; document.getElementById('gr-ate').value = '';
+          return loadGraficos().catch((err) => toast(err.message, 'bad'));
+        }
       }
     });
     document.addEventListener('change', (e) => {
@@ -1238,6 +1812,7 @@
       const d = el.dataset;
       if (d.act === 'set-preav') return setField(d.id, 'preAvaliacao', el.value);
       if (d.act === 'set-obs') return setField(d.id, 'observacao', el.value);
+      if (d.act === 'set-prom-grupo') return setPromotorGrupo(d.nome, el.value);
     });
 
     init().catch((e) => toast(e.message, 'bad'));

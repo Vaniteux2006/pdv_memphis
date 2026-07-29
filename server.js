@@ -113,6 +113,9 @@ let _ready;
 const ready = () => (_ready ||= db.init());
 app.use(ah(async (req, res, next) => { await ready(); next(); }));
 
+// Rotas liberadas pra quem ainda está com senha provisória — o mínimo pra conseguir trocá-la.
+const LIVRE_SEM_TROCAR_SENHA = new Set(['/api/me', '/api/change-password', '/api/logout', '/api/signup-info']);
+
 const requireAuth = ah(async (req, res, next) => {
   const token = req.cookies[COOKIE];
   if (!token) return res.status(401).json({ error: 'Não autenticado' });
@@ -121,6 +124,11 @@ const requireAuth = ah(async (req, res, next) => {
   catch { return res.status(401).json({ error: 'Sessão expirada' }); }
   const u = await db.findUserById(payload.uid);
   if (!u || !u.active) return res.status(401).json({ error: 'Sessão inválida' });
+  // Senha provisória vale SÓ pra trocar a senha. A tela já redirecionava, mas era só no
+  // navegador: quem chamasse a API direto usava a conta inteira sem nunca trocar — e a
+  // provisória do onboarding em massa é previsível (PRIMEIRONOME + ano).
+  if (u.mustChangePassword && !LIVRE_SEM_TROCAR_SENHA.has(req.path))
+    return res.status(403).json({ error: 'Troque sua senha provisória antes de usar o sistema.', mustChangePassword: true });
   req.user = u;
   next();
 });
@@ -160,7 +168,7 @@ app.post('/api/signup', signupLimiter, ah(async (req, res) => {
     const { name, email, password, telefone, grupo, regiao } = req.body;
     if (!String(name || '').trim()) return res.status(400).json({ error: 'Informe seu nome completo' });
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim())) return res.status(400).json({ error: 'E-mail inválido' });
-    if (String(password || '').length < 6) return res.status(400).json({ error: 'A senha precisa de ao menos 6 caracteres' });
+    db.validaSenha(password); // erro vira 400 no catch abaixo
     if (regiao && !db.REGIOES.some((r) => r.sigla === regiao)) return res.status(400).json({ error: 'Região inválida' });
     await db.createUser({ email, name, password, role: 'promotor', telefone, grupo, regiao, pendingApproval: true });
     res.json({ ok: true, pending: true });
@@ -535,6 +543,9 @@ app.post('/api/admin/ref/import', requireAuth, requirePerm('listas'), ah(async (
     try { await wb.xlsx.load(Buffer.from(String(req.body.file), 'base64')); }
     catch { return res.status(400).json({ error: 'Arquivo inválido — envie uma planilha .xlsx' }); }
     const grupos = [], promotores = [];
+    // "Grupo do Promotor" precisa ser testada ANTES de /grupo/, senão a coluna do grupo
+    // de cada promotor seria confundida com a lista de grupos da campanha
+    const ehGrupoDoPromotor = (h) => /grupo.*promotor|promotor.*grupo/.test(h);
     // mesmo teto de varredura do import de contas: planilha gigante não trava o event loop
     const MAX_VARRER = REF_IMPORT_MAX * 4;
     let varridas = 0, demais = false;
@@ -547,8 +558,9 @@ app.post('/api/admin/ref/import', requireAuth, requirePerm('listas'), ah(async (
         for (let c = 1; c <= 30; c++) {
           const h = semAcento(celTxt(row.getCell(c).value)).toLowerCase().trim();
           if (!h) continue;
-          if (cols.grupos === undefined && /grupo/.test(h)) cols.grupos = c;
-          if (cols.promotores === undefined && /promotor/.test(h)) cols.promotores = c;
+          if (cols.grupoDoPromotor === undefined && ehGrupoDoPromotor(h)) cols.grupoDoPromotor = c;
+          else if (cols.grupos === undefined && /grupo/.test(h)) cols.grupos = c;
+          if (cols.promotores === undefined && /promotor/.test(h) && !ehGrupoDoPromotor(h)) cols.promotores = c;
         }
         headerRow = r;
       }
@@ -558,7 +570,11 @@ app.post('/api/admin/ref/import', requireAuth, requirePerm('listas'), ah(async (
         const row = ws.getRow(r);
         const pega = (c) => celTxt(row.getCell(c).value).replace(/\s+/g, ' ').trim();
         if (cols.grupos !== undefined) { const v = pega(cols.grupos); if (v) grupos.push(v); }
-        if (cols.promotores !== undefined) { const v = pega(cols.promotores); if (v) promotores.push(v); }
+        if (cols.promotores !== undefined) {
+          const v = pega(cols.promotores);
+          // com a coluna de grupo do promotor, o item vira o par {nome, grupo}
+          if (v) promotores.push(cols.grupoDoPromotor !== undefined ? { nome: v, grupo: pega(cols.grupoDoPromotor) } : v);
+        }
       }
     }
     if (demais) return res.status(400).json({ error: `Planilha grande demais — o máximo é ${REF_IMPORT_MAX} nomes por lista numa importação. Divida em mais de um arquivo.` });
@@ -575,6 +591,7 @@ app.get('/api/admin/ref/import-template.xlsx', requireAuth, requirePerm('listas'
   const COLS = [
     { h: 'Grupos', w: 30, nota: 'Um grupo por linha — ex: CALMON. O que já existe na lista é ignorado (nada é removido).' },
     { h: 'Promotores', w: 38, nota: 'Um nome por linha — no banco fica em MAIÚSCULO. O que já existe é ignorado (nada é removido).' },
+    { h: 'Grupo do Promotor', w: 30, nota: 'Opcional — o grupo a que ESTE promotor pertence (mesma linha do nome ao lado). É o que permite calcular o % de participação do grupo. Preencher aqui ATUALIZA o grupo de quem já está no banco; deixar em branco não apaga nada.' },
   ];
   const header = ws.getRow(1);
   COLS.forEach((c, i) => {
@@ -603,12 +620,19 @@ app.get('/api/admin/ref/import-template.xlsx', requireAuth, requirePerm('listas'
   res.end();
 }));
 // limpar o banco de promotores inteiro — o front confirma com texto digitado e baixa backup antes
+// banco de promotores com o grupo de cada um (aba Listas). Fora do /api/reference de
+// propósito — lá o payload é servido a todo mundo no boot.
+app.get('/api/admin/ref/promotores', requireAuth, requirePerm('listas'), ah(async (req, res) =>
+  res.json(await db.listPromotoresComGrupo({ q: req.query.q, limit: req.query.limit }))));
+
 app.delete('/api/admin/ref/promotores/tudo', requireAuth, requirePerm('listas'), ah(async (req, res) => {
   try { res.json(await db.clearPromotores()); }
   catch (e) { res.status(400).json({ error: e.message }); }
 }));
 app.post('/api/admin/ref/:type', requireAuth, requirePerm('listas'), ah(async (req, res) => {
-  try { res.json(await db.addRefItem(req.params.type, req.body.value)); }
+  // grupo só faz sentido pro banco de promotores; nas outras listas o value segue string pura
+  const value = req.body.grupo !== undefined ? { nome: req.body.value, grupo: req.body.grupo } : req.body.value;
+  try { res.json(await db.addRefItem(req.params.type, value)); }
   catch (e) { res.status(400).json({ error: e.message }); }
 }));
 app.delete('/api/admin/ref/:type', requireAuth, requirePerm('listas'), ah(async (req, res) => {
@@ -669,8 +693,20 @@ app.post('/api/submissions', requireAuth, ah(async (req, res) => {
 app.get('/api/my/submissions', requireAuth, ah(async (req, res) =>
   res.json(await db.listSubmissions({ uploadedBy: req.user.id }))));
 
-app.get('/api/admin/submissions', requireAuth, requirePerm('fotos'), ah(async (req, res) =>
-  res.json(await db.listSubmissions(req.query))));
+// Lista PAGINADA + as contagens das sub-abas. Sem paginar, 5 mil fotos viram ~5 MB e ~5s
+// por abertura da aba — e o portão deixa passar 300 requisições ao mesmo tempo, então
+// alguns admins recarregando junto bastariam pra estourar a memória do servidor.
+const PAGINA_FOTOS = 60;
+app.get('/api/admin/submissions', requireAuth, requirePerm('fotos'), ah(async (req, res) => {
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || PAGINA_FOTOS, 1), 200);
+  const skip = Math.max(parseInt(req.query.skip, 10) || 0, 0);
+  const [itens, contagens] = await Promise.all([
+    db.listSubmissions({ ...req.query, limit, skip }),
+    // as contagens não mudam ao paginar — só pede na 1ª página
+    skip === 0 ? db.contarSubmissions(req.query) : Promise.resolve(null),
+  ]);
+  res.json({ itens, skip, limit, temMais: itens.length === limit, ...(contagens ? { contagens } : {}) });
+}));
 
 app.patch('/api/admin/submissions/:id', requireAuth, requirePerm('fotos'), ah(async (req, res) => {
   try { res.json(await db.updateSubmission(req.params.id, req.body)); }
@@ -689,17 +725,42 @@ app.delete('/api/admin/submissions/:id', requireAuth, requirePerm('fotos'), ah(a
   res.json({ ok: true });
 }));
 
+// ---------- presença dos avaliadores ----------
+// "estou nesta foto agora" → devolve em quais fotos os OUTROS admins estão.
+// Só avisa, não reserva: dois admins ainda podem avaliar a mesma foto se insistirem.
+app.post('/api/admin/presenca', requireAuth, requirePerm('fotos'), ah(async (req, res) => {
+  const subId = typeof req.body.subId === 'string' ? req.body.subId.slice(0, 64) : '';
+  res.json({ outros: await db.marcarPresenca(req.user.id, req.user.name, subId) });
+}));
+
 // ---------- aderência ----------
 // números de participação do período (padrão: últimos 3 meses até hoje)
 const ISO_DATA = /^\d{4}-\d{2}-\d{2}$/;
-app.get('/api/admin/aderencia', requireAuth, requirePerm('aderencia'), ah(async (req, res) => {
+// resolve o período das telas de números: sem datas na query, últimos N meses até hoje
+function periodoDaQuery(req, mesesPadrao = 3) {
   const hoje = db.hojeBR();
   const ate = ISO_DATA.test(req.query.ate || '') ? req.query.ate : hoje;
   const d = new Date(ate + 'T00:00:00Z');
-  d.setUTCMonth(d.getUTCMonth() - 3);
+  d.setUTCMonth(d.getUTCMonth() - mesesPadrao);
   const de = ISO_DATA.test(req.query.de || '') ? req.query.de : d.toISOString().slice(0, 10);
+  return { de, ate };
+}
+app.get('/api/admin/aderencia', requireAuth, requirePerm('aderencia'), ah(async (req, res) => {
+  const { de, ate } = periodoDaQuery(req);
   if (de > ate) return res.status(400).json({ error: 'A data inicial é depois da final' });
   res.json(await db.aderencia({ de, ate }));
+}));
+
+// ---------- série temporal (aba Gráficos) ----------
+// Mesma permissão da aderência: quem vê os números vê a evolução deles.
+app.get('/api/admin/series', requireAuth, requirePerm('aderencia'), ah(async (req, res) => {
+  const por = req.query.por === 'mes' ? 'mes' : 'semana';
+  const { de, ate } = periodoDaQuery(req, por === 'mes' ? 12 : 3); // por mês, 12 meses conta uma história melhor
+  if (de > ate) return res.status(400).json({ error: 'A data inicial é depois da final' });
+  // teto de baldes: 3 anos por semana viraria 150 pontos ilegíveis e uma varredura à toa
+  const dias = (new Date(ate) - new Date(de)) / 86400000;
+  if (por === 'semana' && dias > 730) return res.status(400).json({ error: 'Período longo demais por semana — use "por mês" ou encurte pra até 2 anos.' });
+  res.json(await db.serie({ de, ate, por }));
 }));
 
 // ---------- ranking ----------
@@ -714,8 +775,11 @@ app.get('/api/ranking', requireAuth, ah(async (req, res) => res.json(await db.li
 app.get('/api/file/:id/:idx?', requireAuth, ah(async (req, res) => {
   const s = await db.getSubmission(req.params.id);
   if (!s) return res.status(404).end();
-  // foto vencedora de ranking é visível pra todo usuário logado (página do ranking)
-  if (req.user.role !== 'admin' && s.uploadedBy !== req.user.id && !(s.rankingPos >= 1)) return res.status(403).end();
+  // Quem pode ver: quem avalia fotos, o dono da foto, e qualquer logado se ela é vencedora
+  // de ranking (a página do ranking é aberta a todos). Antes bastava ser admin — o que dava
+  // acesso a todas as fotos pra um admin que só tem permissão de Listas ou Contas.
+  const podeVer = db.temPerm(req.user, 'fotos') || s.uploadedBy === req.user.id || s.rankingPos >= 1;
+  if (!podeVer) return res.status(403).end();
   const imgs = imagensDe(s);
   const idx = Math.min(Math.max(parseInt(req.params.idx || '0', 10) || 0, 0), imgs.length - 1);
   if (!imgs[idx]) return res.status(404).end();
