@@ -156,8 +156,9 @@ Listas editáveis: `grupos` e `clientes` (usadas em autocomplete e filtros).
 ## Seed inicial
 
 No primeiro boot (`db.init()`), se as coleções estiverem vazias:
-- cria o admin `admin@local` / `admin123` com `permissions: ['*']` (**trocar após o
-  primeiro acesso** — ver pendências em [07 — Segurança](07-seguranca.md));
+- cria o primeiro admin com `permissions: ['*']`: e-mail de `ADMIN_EMAIL` (padrão
+  `admin@local`) e senha de `ADMIN_SENHA` — sem a env, a senha é **sorteada**, aparece
+  uma única vez no log e a troca é obrigatória no 1º login (nada de senha fixa no código);
 - semeia `promotores`, `refdata.grupos` e `refdata.clientes` a partir de `data/seed.json`;
 - cria `config` com senhas padrão;
 - migra dados antigos (pendentes sem `tipo` viram `promotor`).

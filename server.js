@@ -20,6 +20,10 @@ const HOST = process.env.HOST || '0.0.0.0';
 const JWT_SECRET = process.env.SESSION_SECRET || 'dev-secret-troque';
 const COOKIE = 'mp_token';
 const isProd = process.env.NODE_ENV === 'production';
+// Sem SESSION_SECRET em produção o app rodaria com o segredo público de dev —
+// qualquer pessoa forjaria um cookie de admin. Melhor não subir do que subir aberto.
+if (isProd && JWT_SECRET === 'dev-secret-troque')
+  throw new Error('SESSION_SECRET não configurado no ambiente — abortando o boot em produção.');
 
 // pastas permitidas pra upload direto (o navegador sobe a foto direto no Cloudinary)
 const PASTAS = {

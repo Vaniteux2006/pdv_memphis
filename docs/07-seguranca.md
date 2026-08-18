@@ -56,8 +56,10 @@ flowchart TD
 
 ### Validação de entrada
 - Campos obrigatórios checados em cada rota; `updateSubmission` só aceita uma
-  **lista branca** de campos (`baixado, preAvaliacao, pontosExtra, validado, observacao, pago`)
-  — o cliente não consegue gravar campos arbitrários. `permissions` na criação de conta
+  **lista branca** de campos (`baixado, preAvaliacao, pontosExtra, validado, motivoRecusa, observacao, pago`)
+  — o cliente não consegue gravar campos arbitrários. `pontosExtra` também tem o **valor**
+  validado: só entram itens da lista vigente (aba Listas), senão texto solto viraria
+  categoria fantasma nos gráficos. `permissions` na criação de conta
   só é aceito de quem tem acesso total.
 - **XSS no painel (revisão jul/2026):** handlers `onclick` inline que interpolavam dados
   de usuário foram trocados por **`data-*` + event listeners** — dado de promotor/cliente
@@ -76,7 +78,7 @@ flowchart TD
 
 ## Pentest (autorizado)
 
-`test/pentest.js` ataca o próprio app (38 verificações). Resultado atual: **38 defesas OK, 0 achados.**
+`test/pentest.js` ataca o próprio app (40 verificações). Resultado atual: **40 defesas OK, 0 achados.**
 Cobre: exposição de arquivos sensíveis, travessia de diretório, acesso sem auth, **injeção
 NoSQL** no login, **forja/adulteração de JWT**, **escalonamento de privilégio**, **mass
 assignment**, **IDOR** (foto de outro promotor), abuso do upload assinado, **ReDoS/regex**
@@ -110,7 +112,8 @@ node test/pentest.js
 | Senha provisória + troca obrigatória | ✅⚠️ | Flag no banco + fluxo no front. **Pendência:** o servidor ainda não bloqueia as outras rotas enquanto a troca não acontece (quem ignora o redirect segue usando a API). |
 | Força mínima de senha | ⬜ | Achado da revisão jul/2026 — hoje qualquer senha é aceita. |
 | **Rotacionar segredos expostos** | ⬜ | Senha do Mongo e secret do Cloudinary passaram por chat — trocar antes do go-live. |
-| **Trocar admin padrão** | ⬜ | `admin@local` / `admin123` é só semente. |
+| **Admin padrão sem senha fixa** | ✅ | Seed lê `ADMIN_EMAIL`/`ADMIN_SENHA`; sem env, senha sorteada + troca obrigatória. Falta só trocar a senha da instalação atual pelo painel (mãos do dono). |
+| **Boot aborta sem `SESSION_SECRET`** | ✅ | Em produção, segredo de dev no lugar do real = `throw` no boot (antes caía em fallback público e qualquer um forjava cookie de admin). |
 | Validação por schema (zod) | ⬜ | Reforço opcional de tipos/limites. |
 | Backup + auditoria | ⬜ | Snapshot do Mongo + log de ações sensíveis. |
 

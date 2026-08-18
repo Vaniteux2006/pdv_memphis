@@ -80,7 +80,8 @@ subir pelo painel/bot e configurar as variáveis de ambiente (ou incluir o `.env
 | `CLOUDINARY_CLOUD_NAME` | Cloud name do Cloudinary |
 | `CLOUDINARY_API_KEY` | API key do Cloudinary |
 | `CLOUDINARY_API_SECRET` | API secret (NUNCA exposto ao cliente) |
-| `SESSION_SECRET` | Segredo para assinar o JWT |
+| `SESSION_SECRET` | Segredo para assinar o JWT — **obrigatório em produção** (sem ele o boot aborta de propósito) |
+| `ADMIN_EMAIL` / `ADMIN_SENHA` | Credenciais do admin semeado no 1º boot; sem `ADMIN_SENHA`, a senha é sorteada e mostrada uma vez no log (troca obrigatória) |
 | `NODE_ENV` | `production` ativa o cookie `secure` |
 | `PORT` / `HOST` | Porta/host do listen (Discloud exige 8080 + 0.0.0.0 — já é o padrão) |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` | SMTP do email de redefinição de senha (ex: Gmail App Password) |
@@ -106,7 +107,7 @@ admin + promotores/grupos/clientes.
 
 | Tarefa | Como |
 |--------|------|
-| Acesso admin inicial | `admin@local` / `admin123` (trocar) — tem acesso total |
+| Acesso admin inicial | `ADMIN_EMAIL` / `ADMIN_SENHA` do ambiente (sem elas: `admin@local` + senha sorteada no log, troca obrigatória) — tem acesso total |
 | Dar/tirar permissões de um admin | Painel → Contas → 🔐 Permissões (precisa de acesso total) |
 | Acesso total pra outra conta | Gerar/validar o **crachá** (Painel → Contas) |
 | **Criar contas em massa** | Painel → Contas → **⬇ Baixar modelo** (planilha travada, só o que dá pra preencher fica liberado) → preencher → **📥 Criar por planilha** (máx 500/vez). Aceita também .xlsx próprio com colunas Nome + E-mail. Cargas maiores: `node tools/criar-promotores.js arquivo.xlsx [--dry]` |

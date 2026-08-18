@@ -95,7 +95,7 @@ async function uploadCloud(cookie, tipo, file, filename, ct) {
 
   // ---- avaliação ----
   await req('PATCH', '/api/admin/submissions/' + id, { cookie: ac, body: { preAvaliacao: 'EXCELENTE', validado: true, pontosExtra: ['Ilha de produtos'] } });
-  const s1 = J((await req('GET', '/api/admin/submissions', { cookie: ac })).body).find((x) => x.id === id);
+  const s1 = J((await req('GET', '/api/admin/submissions', { cookie: ac })).body).itens.find((x) => x.id === id);
   ck('avaliação salva', s1.preAvaliacao === 'EXCELENTE' && s1.validado === true);
 
   // ---- pendente ----
@@ -148,7 +148,7 @@ async function uploadCloud(cookie, tipo, file, filename, ct) {
   ck('manifesto: 1 item com pasta certa', man.count === 1 && /^NE\/NE1 - NOVO SURUBIM - .+\/foto\.jpg$/.test(man.items[0].path), man.items[0] && man.items[0].path);
   ck('URL do manifesto baixa do Cloudinary (200)', (await getUrl(man.items[0].url)) === 200);
   await req('POST', '/api/admin/mark-downloaded', { cookie: ac, body: { ids: man.items.map((i) => i.id) } });
-  ck('marcadas como baixadas', J((await req('GET', '/api/admin/submissions?status=baixados', { cookie: ac })).body).length === 1);
+  ck('marcadas como baixadas', J((await req('GET', '/api/admin/submissions?status=baixados', { cookie: ac })).body).itens.length === 1);
   ck('excel', (await req('GET', '/api/admin/export.xlsx', { cookie: ac })).status === 200);
 
   // ---- purge ----
@@ -158,7 +158,7 @@ async function uploadCloud(cookie, tipo, file, filename, ct) {
   // ---- foto recusada NÃO é baixada ----
   const fotoR = await uploadCloud(pc, 'fotos', jpeg, 'r.jpg', 'image/jpeg');
   await req('POST', '/api/submissions', { cookie: pc, body: { cliente: 'LOJA RECUSADA', endereco: 'R', dataExposicao: '2026-06-20', regiao: 'CN', grupo: '', promotor: ref.promotores[1], fotos: [fotoR] } });
-  const subR = J((await req('GET', '/api/admin/submissions?status=novos', { cookie: ac })).body)[0];
+  const subR = J((await req('GET', '/api/admin/submissions?status=novos', { cookie: ac })).body).itens[0];
   await req('PATCH', '/api/admin/submissions/' + subR.id, { cookie: ac, body: { validado: false } });
   const manR = J((await req('GET', '/api/admin/download-manifest?onlyNew=0', { cookie: ac })).body);
   ck('foto recusada não entra no download', manR.count === 0 && manR.items.every((i) => i.id !== subR.id), 'count=' + manR.count);
@@ -168,14 +168,14 @@ async function uploadCloud(cookie, tipo, file, filename, ct) {
   ck('ao validar, volta pro download', manOk.count === 1);
   // excluir a foto de vez (testa exclusão individual + limpa)
   await req('DELETE', '/api/admin/submissions/' + subR.id, { cookie: ac });
-  ck('excluir foto remove do banco', J((await req('GET', '/api/admin/submissions', { cookie: ac })).body).length === 0);
+  ck('excluir foto remove do banco', J((await req('GET', '/api/admin/submissions', { cookie: ac })).body).itens.length === 0);
 
   // ---- foto com 2 imagens ("antes e depois") = 1 foto, 2 arquivos no ZIP ----
   const im1 = await uploadCloud(pc, 'fotos', jpeg, 'a1.jpg', 'image/jpeg');
   const im2 = await uploadCloud(pc, 'fotos', jpeg, 'a2.jpg', 'image/jpeg');
   const dois = await req('POST', '/api/submissions', { cookie: pc, body: { cliente: 'ANTES E DEPOIS', endereco: 'X', dataExposicao: '2026-07-05', regiao: 'SE', grupo: '', promotor: 'FULANO 2IMG', fotos: [im1, im2] } });
   ck('2 imagens = 1 foto (count 1)', dois.status === 200 && J(dois.body).count === 1, J(dois.body).error || '');
-  const subAD = J((await req('GET', '/api/admin/submissions?status=novos', { cookie: ac })).body)[0];
+  const subAD = J((await req('GET', '/api/admin/submissions?status=novos', { cookie: ac })).body).itens[0];
   await req('PATCH', '/api/admin/submissions/' + subAD.id, { cookie: ac, body: { validado: true } });
   const manAD = J((await req('GET', '/api/admin/download-manifest?onlyNew=0', { cookie: ac })).body);
   ck('2 imagens = 2 arquivos no ZIP', manAD.count === 2 && manAD.items.filter((i) => i.id === subAD.id).length === 2, 'count=' + manAD.count);
