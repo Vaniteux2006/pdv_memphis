@@ -864,7 +864,8 @@ app.get('/api/file/:id/:idx?', requireAuth, ah(async (req, res) => {
   const imgs = imagensDe(s);
   const idx = Math.min(Math.max(parseInt(req.params.idx || '0', 10) || 0, 0), imgs.length - 1);
   if (!imgs[idx]) return res.status(404).end();
-  res.redirect(store.urlFor(imgs[idx].storedFile, imgs[idx].resourceType || 'image'));
+  // exibição em tela: versão leve. O ZIP do lote continua baixando o original (ver manifesto).
+  res.redirect(store.urlFor(imgs[idx].storedFile, imgs[idx].resourceType || 'image', { otimizada: true }));
 }));
 
 // ---------- helpers de export ----------
@@ -983,6 +984,14 @@ app.post('/api/admin/purge', requireAuth, requirePerm('fotos'), ah(async (req, r
 }));
 
 app.use(express.static(path.join(__dirname, 'public')));
+
+// 404 próprio. Sem isto o Express responde o "Cannot GET /x" padrão — feio para quem
+// erra o endereço e, de quebra, entrega a stack usada. API responde JSON (é o que o
+// front espera); navegação responde a página.
+app.use((req, res) => {
+  if (req.path.startsWith('/api/')) return res.status(404).json({ error: 'Rota não encontrada' });
+  res.status(404).sendFile(path.join(__dirname, 'public', '404.html'));
+});
 
 // middleware de erro (multer, async, etc.)
 app.use((err, req, res, next) => {

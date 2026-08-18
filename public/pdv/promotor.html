@@ -65,6 +65,7 @@
         <button type="button" class="add-foto" id="addfoto">📷 Adicionar foto</button>
         <div class="muted" id="fileinfo" aria-live="polite" style="margin-top:6px;"></div>
 
+        <div class="err" id="err" role="alert"></div>
         <button type="submit" id="send" style="margin-top:14px;">Enviar fotos</button>
       </form>
     </div>
@@ -116,6 +117,13 @@
       loadMine();
       setInterval(loadMine, 20000); // atualiza status/pré-avaliação a cada 20s
     }
+    // O erro precisa FICAR na tela: o toast some em 2,6s e mensagens como "você já tem uma
+    // foto nesta semana" são justamente as que a pessoa precisa ler com calma no celular,
+    // no meio do corredor da loja. Todas as outras telas já tinham esse container.
+    const err = document.getElementById('err');
+    function erroForm(msg) { err.textContent = msg || ''; if (msg) toast(msg, 'bad'); }
+    function limpaErro() { err.textContent = ''; }
+
     const fillDL = (id, arr) =>
       (document.getElementById(id).innerHTML = arr.map((v) => `<option value="${esc(v)}">`).join(''));
 
@@ -236,7 +244,7 @@
 
     document.getElementById('form').addEventListener('submit', async (e) => {
       e.preventDefault();
-      if (!staged.length) { toast('Adicione pelo menos 1 foto antes de enviar', 'bad'); return; }
+      if (!staged.length) { erroForm('Adicione pelo menos 1 foto antes de enviar'); return; }
       if (!promOk && !promCadastrado && !confirm('O nome do promotor não foi confirmado no banco. Enviar mesmo assim?')) return;
       const btn = document.getElementById('send');
       btn.disabled = true; addBtn.disabled = true;
@@ -258,13 +266,14 @@
             regiao: val('regiao'), grupo: val('grupo'), promotor: val('promotor'), fotos: fotosIds,
           }),
         });
+        limpaErro();
         toast('Fotos enviadas!', 'ok');
         e.target.reset(); promStatus.textContent = ''; promOk = false; promCadastrado = false;
         document.getElementById('dataExposicao').value = new Date().toISOString().slice(0, 10);
         clearStaged();
         prefill();
         loadMine();
-      } catch (ex) { toast(ex.message, 'bad'); }
+      } catch (ex) { erroForm(ex.message); }
       finally {
         enviando = false; thumbsEl.classList.remove('sending');
         btn.disabled = false; addBtn.disabled = false; btn.textContent = 'Enviar fotos';
@@ -301,7 +310,7 @@
         : '<span class="pill off">Em análise</span>';
       const pago = s.pago ? ' <span class="pill on">💰 Pago</span>' : '';
       const n = (s.imagens && s.imagens.length) || 1;
-      const imgs = Array.from({ length: n }, (_, k) => `<img src="/api/file/${s.id}/${k}" loading="lazy" onclick="zoom('${s.id}',${k})" style="${n > 1 ? 'width:50%' : ''}" />`).join('');
+      const imgs = Array.from({ length: n }, (_, k) => `<img src="/api/file/${s.id}/${k}" alt="Foto ${k + 1} da sua exposicao de ${esc(s.cliente)}" loading="lazy" onclick="zoom('${s.id}',${k})" style="${n > 1 ? 'width:50%' : ''}" />`).join('');
       return `<div class="photo">
         <div style="display:flex">${imgs}</div>
         <div class="meta">

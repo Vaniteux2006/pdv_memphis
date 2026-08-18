@@ -490,9 +490,13 @@ button.modal-close:hover { background: rgba(255, 255, 255, .28); }
 
 /* ---------- celular ---------- */
 @media (max-width: 640px) {
-  .lp-hero { padding: 56px 20px 64px; }
+  /* Hero enxuto no celular: o público abre isto num Android de entrada (~640px de altura),
+     e com o respiro do desktop o primeiro cartão — que é a ação da página — nascia abaixo
+     da dobra. Aqui ele cabe inteiro, com o "Entrar no módulo" visível sem rolar. */
+  .lp-hero { padding: 36px 20px 40px; }
   .lp-hero h1 { font-size: 30px; }
-  .lp-hero p { font-size: 16px; }
+  .lp-hero p { font-size: 16px; margin-bottom: 18px; }
+  .lp-section { padding-top: 32px; }
   .btn-cta.outline { margin-left: 0; margin-top: 12px; }
 
   .topbar, .site-header { padding: 10px 14px; }

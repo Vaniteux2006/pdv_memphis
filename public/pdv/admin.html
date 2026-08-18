@@ -657,7 +657,7 @@
     }
     function rankingCard(s) {
       const nImgs = (s.imagens && s.imagens.length) || 1;
-      const imgs = Array.from({ length: nImgs }, (_, k) => `<img src="/api/file/${esc(s.id)}/${k}" loading="lazy" data-act="zoom" data-id="${esc(s.id)}" data-idx="${k}" style="${nImgs > 1 ? 'width:50%' : ''}" />`).join('');
+      const imgs = Array.from({ length: nImgs }, (_, k) => `<img src="/api/file/${esc(s.id)}/${k}" alt="Foto ${k + 1} da exposicao de ${esc(s.cliente)}" loading="lazy" data-act="zoom" data-id="${esc(s.id)}" data-idx="${k}" style="${nImgs > 1 ? 'width:50%' : ''}" />`).join('');
       const medalhas = [1, 2, 3].map((p) => {
         const on = s.rankingPos === p;
         return `<button class="${on ? '' : 'ghost'}" style="font-size:16px;padding:5px 10px;${on ? 'background:var(--purple);border-color:transparent;' : ''}"
@@ -778,7 +778,7 @@
       const preav = ref.preAvaliacoes.map((p) => `<option ${s.preAvaliacao === p ? 'selected' : ''}>${esc(p)}</option>`).join('');
       const dataExp = s.dataExposicao ? new Date(s.dataExposicao + 'T00:00').toLocaleDateString('pt-BR') : '—';
       const nImgs = (s.imagens && s.imagens.length) || 1;
-      const imgs = Array.from({ length: nImgs }, (_, k) => `<img src="/api/file/${esc(s.id)}/${k}" loading="lazy" data-act="zoom" data-id="${esc(s.id)}" data-idx="${k}" style="${nImgs > 1 ? 'width:50%' : ''}" />`).join('');
+      const imgs = Array.from({ length: nImgs }, (_, k) => `<img src="/api/file/${esc(s.id)}/${k}" alt="Foto ${k + 1} da exposicao de ${esc(s.cliente)}" loading="lazy" data-act="zoom" data-id="${esc(s.id)}" data-idx="${k}" style="${nImgs > 1 ? 'width:50%' : ''}" />`).join('');
       return `<div class="photo" style="grid-column:span 1;">
         <div style="display:flex">${imgs}</div>
         <div class="meta">

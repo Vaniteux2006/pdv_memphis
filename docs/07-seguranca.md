@@ -150,3 +150,20 @@ node test/pentest.js
 > 🔸 **Rate limit em serverless:** o `express-rate-limit` em memória funciona num host
 > **persistente** (Discloud). Na Vercel (serverless), cada instância tem sua própria
 > contagem — ali precisaria de um store compartilhado (ex: Redis/Upstash).
+
+## Front-end, SEO e acessibilidade (revisão ago/2026)
+
+| Item | Estado | Observação |
+|---|---|---|
+| **Segredos no cliente** | ✅ | Nada de `sk_`/`api_secret` em `public/`; nenhum `process.env` no front. `signUpload` manda só `apiKey`/`cloudName` (públicos por design) — o `api_secret` fica no servidor. `.env` no `.gitignore` e **nunca commitado**. |
+| **Cookies** | ✅ | **Um só**: `mp_token` — `HttpOnly`, `SameSite=Lax`, `Secure` em produção, 8h, `Path=/`. Zero `localStorage`/`sessionStorage`. É o que a política de privacidade declara. |
+| **Banner de cookies** | ✅ *(ausência correta)* | Cookie estritamente necessário **não exige** banner — exige aviso, que está na política. Pôr banner aqui pediria consentimento para algo que não se pode recusar. |
+| **404 customizada** | ✅ | `public/404.html`. Antes vinha o "Cannot GET /x" do Express, que ainda entregava a stack. `/api/*` responde JSON (`{ error }`), navegação responde a página. |
+| **robots.txt** | ✅ | `Disallow: /` — ferramenta interna não deve ser indexada. |
+| **sitemap.xml** | ✅ *(ausência correta)* | Sitemap serve para guiar indexação; com `Disallow: /` seria contraditório. Não criar. |
+| **`<title>` por página** | ✅ | Todas as 11 páginas têm título próprio e descritivo. |
+| **`<meta description>`** | ➖ | Ausente em todas. Só tem valor em página indexável — não é o caso. |
+| **`alt` nas imagens** | ✅ | Corrigido: as 3 fotos dinâmicas (galeria do painel e "minhas fotos") não tinham `alt`; agora descrevem cliente e nº da imagem. |
+| **Estados de erro nos formulários** | ✅ | Corrigido: `promotor.html` — a tela de 1.400 pessoas — reportava **tudo** só por toast, que some em 2,6 s. Ganhou o `.err` com `role="alert"` que as outras telas já tinham; o toast continua. |
+| **CTA acima da dobra** | ✅ | Corrigido: em Android de 640 px o "Entrar no módulo" caía **abaixo** da dobra (707 px). Hero compactado só no mobile → 619 px. Desktop intocado (Bloco 5 redesenha a capa). |
+| **Imagens comprimidas** | ✅ | Único estático é o logo (37 KB, WebP). As fotos agora são entregues com `f_auto,q_auto` **na tela** — ⚠️ o ZIP do lote continua baixando o **original**, porque é o arquivo que vai para o servidor interno e vive a longo prazo. |
