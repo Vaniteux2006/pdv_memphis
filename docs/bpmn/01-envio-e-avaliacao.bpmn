@@ -1,0 +1,422 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  01 — Envio e avaliação de foto (ponta a ponta)
+  Artefato NORMATIVO do processo (BPMN 2.0). O Mermaid do docs/04-fluxos-bpmn.md é
+  explicativo; em divergência, vale este arquivo. Abre no Camunda Modeler / bpmn.io.
+  Pools: Promotor (campo) e Equipe Memphis (admin); Cloudinary e MongoDB Atlas
+  entram como black-box (só trocas de mensagem, sem processo interno).
+-->
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  id="Defs_EnvioAvaliacao"
+                  targetNamespace="http://memphis-pdv/bpmn/01-envio-e-avaliacao"
+                  exporter="Memphis PDV (plano LGPD)" exporterVersion="1.0">
+
+  <bpmn:collaboration id="Colab_Memphis">
+    <bpmn:participant id="Part_Cloudinary" name="Cloudinary (armazenamento de imagens)" />
+    <bpmn:participant id="Part_Promotor" name="Promotor (campo)" processRef="Process_Promotor" />
+    <bpmn:participant id="Part_Equipe" name="Equipe Memphis (admin)" processRef="Process_Equipe" />
+    <bpmn:participant id="Part_Mongo" name="MongoDB Atlas (banco de dados)" />
+    <bpmn:messageFlow id="MF_Upload" name="imagens (upload assinado)" sourceRef="Task_Upload" targetRef="Part_Cloudinary" />
+    <bpmn:messageFlow id="MF_Metadados" name="metadados da foto" sourceRef="Task_Registra" targetRef="Part_Mongo" />
+    <bpmn:messageFlow id="MF_FotoNaFila" name="foto disponível para avaliação" sourceRef="Task_Registra" targetRef="Start_FotoNova" />
+    <bpmn:messageFlow id="MF_BaixaZip" name="baixa cada imagem (URL assinada)" sourceRef="Task_ZIP" targetRef="Part_Cloudinary" />
+    <bpmn:messageFlow id="MF_PurgeImg" name="apaga as imagens" sourceRef="Task_Purge" targetRef="Part_Cloudinary" />
+    <bpmn:messageFlow id="MF_PurgeReg" name="apaga os registros baixados" sourceRef="Task_Purge" targetRef="Part_Mongo" />
+  </bpmn:collaboration>
+
+  <!-- ══════════════ Pool: Promotor ══════════════ -->
+  <bpmn:process id="Process_Promotor" isExecutable="false">
+    <bpmn:startEvent id="Start_FotoFeita" name="Exposição montada e fotografada no PDV">
+      <bpmn:outgoing>F01</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:userTask id="Task_Login" name="Loga no app">
+      <bpmn:incoming>F01</bpmn:incoming>
+      <bpmn:outgoing>F02</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:exclusiveGateway id="GW_SenhaProv" name="Senha provisória?">
+      <bpmn:incoming>F02</bpmn:incoming>
+      <bpmn:outgoing>F03</bpmn:outgoing>
+      <bpmn:outgoing>F05</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:userTask id="Task_TrocaSenha" name="Troca a senha (obrigatória)">
+      <bpmn:incoming>F03</bpmn:incoming>
+      <bpmn:outgoing>F04</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="Task_ConfereSenhas" name="Confere senha mensal/semanal e a data">
+      <bpmn:incoming>F04</bpmn:incoming>
+      <bpmn:incoming>F05</bpmn:incoming>
+      <bpmn:outgoing>F06</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="Task_Preenche" name="Preenche cliente, endereço, região, grupo e nome">
+      <bpmn:incoming>F06</bpmn:incoming>
+      <bpmn:incoming>F15</bpmn:incoming>
+      <bpmn:outgoing>F07</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:exclusiveGateway id="GW_NomeNoBanco" name="Nome está no banco oficial?">
+      <bpmn:incoming>F07</bpmn:incoming>
+      <bpmn:outgoing>F08</bpmn:outgoing>
+      <bpmn:outgoing>F10</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:userTask id="Task_CadastraNome" name="Cadastra o nome novo (entra na fila de aprovação)">
+      <bpmn:incoming>F08</bpmn:incoming>
+      <bpmn:outgoing>F09</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="Task_SelecionaImagens" name="Seleciona 1–2 imagens (antes e depois)">
+      <bpmn:incoming>F09</bpmn:incoming>
+      <bpmn:incoming>F10</bpmn:incoming>
+      <bpmn:outgoing>F11</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:serviceTask id="Task_Upload" name="Sobe as imagens direto no Cloudinary (upload assinado)">
+      <bpmn:incoming>F11</bpmn:incoming>
+      <bpmn:outgoing>F12</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="Task_Registra" name="Registra os metadados no servidor">
+      <bpmn:incoming>F12</bpmn:incoming>
+      <bpmn:outgoing>F13</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="GW_Travas" name="Passou nas travas de cota?">
+      <bpmn:incoming>F13</bpmn:incoming>
+      <bpmn:outgoing>F14</bpmn:outgoing>
+      <bpmn:outgoing>F15</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:endEvent id="End_Enviada" name="Foto enviada">
+      <bpmn:incoming>F14</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <bpmn:sequenceFlow id="F01" sourceRef="Start_FotoFeita" targetRef="Task_Login" />
+    <bpmn:sequenceFlow id="F02" sourceRef="Task_Login" targetRef="GW_SenhaProv" />
+    <bpmn:sequenceFlow id="F03" name="Sim" sourceRef="GW_SenhaProv" targetRef="Task_TrocaSenha" />
+    <bpmn:sequenceFlow id="F04" sourceRef="Task_TrocaSenha" targetRef="Task_ConfereSenhas" />
+    <bpmn:sequenceFlow id="F05" name="Não" sourceRef="GW_SenhaProv" targetRef="Task_ConfereSenhas" />
+    <bpmn:sequenceFlow id="F06" sourceRef="Task_ConfereSenhas" targetRef="Task_Preenche" />
+    <bpmn:sequenceFlow id="F07" sourceRef="Task_Preenche" targetRef="GW_NomeNoBanco" />
+    <bpmn:sequenceFlow id="F08" name="Não" sourceRef="GW_NomeNoBanco" targetRef="Task_CadastraNome" />
+    <bpmn:sequenceFlow id="F09" sourceRef="Task_CadastraNome" targetRef="Task_SelecionaImagens" />
+    <bpmn:sequenceFlow id="F10" name="Sim" sourceRef="GW_NomeNoBanco" targetRef="Task_SelecionaImagens" />
+    <bpmn:sequenceFlow id="F11" sourceRef="Task_SelecionaImagens" targetRef="Task_Upload" />
+    <bpmn:sequenceFlow id="F12" sourceRef="Task_Upload" targetRef="Task_Registra" />
+    <bpmn:sequenceFlow id="F13" sourceRef="Task_Registra" targetRef="GW_Travas" />
+    <bpmn:sequenceFlow id="F14" name="Sim" sourceRef="GW_Travas" targetRef="End_Enviada" />
+    <bpmn:sequenceFlow id="F15" name="Não — estourou 1/semana ou 4/mês" sourceRef="GW_Travas" targetRef="Task_Preenche" />
+
+    <bpmn:textAnnotation id="TA_Aprovacao">
+      <bpmn:text>Aprovação do nome/grupo: processo 02-cadastro-e-aprovacao.bpmn</bpmn:text>
+    </bpmn:textAnnotation>
+    <bpmn:association id="Assoc_Aprovacao" associationDirection="None" sourceRef="Task_CadastraNome" targetRef="TA_Aprovacao" />
+  </bpmn:process>
+
+  <!-- ══════════════ Pool: Equipe ══════════════ -->
+  <bpmn:process id="Process_Equipe" isExecutable="false">
+    <bpmn:startEvent id="Start_FotoNova" name="Foto nova na fila">
+      <bpmn:outgoing>Q01</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="MED_FotoNova" />
+    </bpmn:startEvent>
+    <bpmn:userTask id="Task_Busca" name="Busca e filtra as fotos">
+      <bpmn:incoming>Q01</bpmn:incoming>
+      <bpmn:outgoing>Q02</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="Task_Avalia" name="Avalia: pré-avaliação + pontos extras">
+      <bpmn:incoming>Q02</bpmn:incoming>
+      <bpmn:outgoing>Q03</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:exclusiveGateway id="GW_Validar" name="Validar?">
+      <bpmn:incoming>Q03</bpmn:incoming>
+      <bpmn:outgoing>Q04</bpmn:outgoing>
+      <bpmn:outgoing>Q05</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:userTask id="Task_Valida" name="Marca validada">
+      <bpmn:incoming>Q04</bpmn:incoming>
+      <bpmn:outgoing>Q07</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="Task_Recusa" name="Marca recusada (motivo + observação)">
+      <bpmn:incoming>Q05</bpmn:incoming>
+      <bpmn:outgoing>Q06</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id="End_Recusada" name="Recusada — fora do ZIP">
+      <bpmn:incoming>Q06</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:exclusiveGateway id="GW_Pago" name="Pago pelo financeiro?">
+      <bpmn:incoming>Q07</bpmn:incoming>
+      <bpmn:outgoing>Q08</bpmn:outgoing>
+      <bpmn:outgoing>Q10</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:userTask id="Task_Pago" name="Marca pago">
+      <bpmn:incoming>Q08</bpmn:incoming>
+      <bpmn:outgoing>Q09</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="Task_ZIP" name="Baixa o ZIP por região (montado no navegador)">
+      <bpmn:incoming>Q09</bpmn:incoming>
+      <bpmn:incoming>Q10</bpmn:incoming>
+      <bpmn:outgoing>Q11</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="Task_Excel" name="Exporta o Excel (molde oficial)">
+      <bpmn:incoming>Q11</bpmn:incoming>
+      <bpmn:outgoing>Q12</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="Task_Purge" name="Limpa (purge) as fotos já baixadas">
+      <bpmn:incoming>Q12</bpmn:incoming>
+      <bpmn:outgoing>Q13</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id="End_Lote" name="Lote fechado">
+      <bpmn:incoming>Q13</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <bpmn:sequenceFlow id="Q01" sourceRef="Start_FotoNova" targetRef="Task_Busca" />
+    <bpmn:sequenceFlow id="Q02" sourceRef="Task_Busca" targetRef="Task_Avalia" />
+    <bpmn:sequenceFlow id="Q03" sourceRef="Task_Avalia" targetRef="GW_Validar" />
+    <bpmn:sequenceFlow id="Q04" name="Sim" sourceRef="GW_Validar" targetRef="Task_Valida" />
+    <bpmn:sequenceFlow id="Q05" name="Não" sourceRef="GW_Validar" targetRef="Task_Recusa" />
+    <bpmn:sequenceFlow id="Q06" sourceRef="Task_Recusa" targetRef="End_Recusada" />
+    <bpmn:sequenceFlow id="Q07" sourceRef="Task_Valida" targetRef="GW_Pago" />
+    <bpmn:sequenceFlow id="Q08" name="Sim" sourceRef="GW_Pago" targetRef="Task_Pago" />
+    <bpmn:sequenceFlow id="Q09" sourceRef="Task_Pago" targetRef="Task_ZIP" />
+    <bpmn:sequenceFlow id="Q10" name="Não" sourceRef="GW_Pago" targetRef="Task_ZIP" />
+    <bpmn:sequenceFlow id="Q11" sourceRef="Task_ZIP" targetRef="Task_Excel" />
+    <bpmn:sequenceFlow id="Q12" sourceRef="Task_Excel" targetRef="Task_Purge" />
+    <bpmn:sequenceFlow id="Q13" sourceRef="Task_Purge" targetRef="End_Lote" />
+  </bpmn:process>
+
+  <!-- ══════════════ Diagrama (coordenadas manuais) ══════════════ -->
+  <bpmndi:BPMNDiagram id="Diagrama_01">
+    <bpmndi:BPMNPlane id="Plano_01" bpmnElement="Colab_Memphis">
+
+      <!-- pools -->
+      <bpmndi:BPMNShape id="Part_Cloudinary_di" bpmnElement="Part_Cloudinary" isHorizontal="true">
+        <dc:Bounds x="1000" y="80" width="350" height="60" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Part_Promotor_di" bpmnElement="Part_Promotor" isHorizontal="true">
+        <dc:Bounds x="160" y="200" width="1540" height="360" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Part_Equipe_di" bpmnElement="Part_Equipe" isHorizontal="true">
+        <dc:Bounds x="160" y="600" width="1540" height="400" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Part_Mongo_di" bpmnElement="Part_Mongo" isHorizontal="true">
+        <dc:Bounds x="1200" y="1080" width="350" height="60" />
+      </bpmndi:BPMNShape>
+
+      <!-- Promotor -->
+      <bpmndi:BPMNShape id="Start_FotoFeita_di" bpmnElement="Start_FotoFeita">
+        <dc:Bounds x="220" y="282" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="180" y="325" width="120" height="40" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Login_di" bpmnElement="Task_Login">
+        <dc:Bounds x="300" y="260" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="GW_SenhaProv_di" bpmnElement="GW_SenhaProv" isMarkerVisible="true">
+        <dc:Bounds x="440" y="275" width="50" height="50" />
+        <bpmndi:BPMNLabel><dc:Bounds x="425" y="240" width="80" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_TrocaSenha_di" bpmnElement="Task_TrocaSenha">
+        <dc:Bounds x="415" y="400" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_ConfereSenhas_di" bpmnElement="Task_ConfereSenhas">
+        <dc:Bounds x="540" y="260" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Preenche_di" bpmnElement="Task_Preenche">
+        <dc:Bounds x="690" y="260" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="GW_NomeNoBanco_di" bpmnElement="GW_NomeNoBanco" isMarkerVisible="true">
+        <dc:Bounds x="830" y="275" width="50" height="50" />
+        <bpmndi:BPMNLabel><dc:Bounds x="810" y="228" width="90" height="40" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_CadastraNome_di" bpmnElement="Task_CadastraNome">
+        <dc:Bounds x="805" y="400" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_SelecionaImagens_di" bpmnElement="Task_SelecionaImagens">
+        <dc:Bounds x="930" y="260" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Upload_di" bpmnElement="Task_Upload">
+        <dc:Bounds x="1080" y="260" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Registra_di" bpmnElement="Task_Registra">
+        <dc:Bounds x="1230" y="260" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="GW_Travas_di" bpmnElement="GW_Travas" isMarkerVisible="true">
+        <dc:Bounds x="1370" y="275" width="50" height="50" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1352" y="234" width="86" height="34" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_Enviada_di" bpmnElement="End_Enviada">
+        <dc:Bounds x="1470" y="282" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1455" y="325" width="70" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="TA_Aprovacao_di" bpmnElement="TA_Aprovacao">
+        <dc:Bounds x="935" y="470" width="230" height="40" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNEdge id="F01_di" bpmnElement="F01">
+        <di:waypoint x="256" y="300" /><di:waypoint x="300" y="300" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F02_di" bpmnElement="F02">
+        <di:waypoint x="400" y="300" /><di:waypoint x="440" y="300" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F03_di" bpmnElement="F03">
+        <di:waypoint x="465" y="325" /><di:waypoint x="465" y="400" />
+        <bpmndi:BPMNLabel><dc:Bounds x="472" y="345" width="24" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F04_di" bpmnElement="F04">
+        <di:waypoint x="515" y="440" /><di:waypoint x="590" y="440" /><di:waypoint x="590" y="340" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F05_di" bpmnElement="F05">
+        <di:waypoint x="490" y="300" /><di:waypoint x="540" y="300" />
+        <bpmndi:BPMNLabel><dc:Bounds x="500" y="280" width="26" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F06_di" bpmnElement="F06">
+        <di:waypoint x="640" y="300" /><di:waypoint x="690" y="300" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F07_di" bpmnElement="F07">
+        <di:waypoint x="790" y="300" /><di:waypoint x="830" y="300" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F08_di" bpmnElement="F08">
+        <di:waypoint x="855" y="325" /><di:waypoint x="855" y="400" />
+        <bpmndi:BPMNLabel><dc:Bounds x="862" y="345" width="26" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F09_di" bpmnElement="F09">
+        <di:waypoint x="905" y="440" /><di:waypoint x="980" y="440" /><di:waypoint x="980" y="340" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F10_di" bpmnElement="F10">
+        <di:waypoint x="880" y="300" /><di:waypoint x="930" y="300" />
+        <bpmndi:BPMNLabel><dc:Bounds x="892" y="280" width="24" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F11_di" bpmnElement="F11">
+        <di:waypoint x="1030" y="300" /><di:waypoint x="1080" y="300" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F12_di" bpmnElement="F12">
+        <di:waypoint x="1180" y="300" /><di:waypoint x="1230" y="300" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F13_di" bpmnElement="F13">
+        <di:waypoint x="1330" y="300" /><di:waypoint x="1370" y="300" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F14_di" bpmnElement="F14">
+        <di:waypoint x="1420" y="300" /><di:waypoint x="1470" y="300" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1432" y="280" width="24" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="F15_di" bpmnElement="F15">
+        <di:waypoint x="1395" y="325" /><di:waypoint x="1395" y="530" /><di:waypoint x="740" y="530" /><di:waypoint x="740" y="340" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1050" y="508" width="220" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Assoc_Aprovacao_di" bpmnElement="Assoc_Aprovacao">
+        <di:waypoint x="905" y="460" /><di:waypoint x="935" y="485" />
+      </bpmndi:BPMNEdge>
+
+      <!-- Equipe -->
+      <bpmndi:BPMNShape id="Start_FotoNova_di" bpmnElement="Start_FotoNova">
+        <dc:Bounds x="332" y="702" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="305" y="745" width="90" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Busca_di" bpmnElement="Task_Busca">
+        <dc:Bounds x="430" y="680" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Avalia_di" bpmnElement="Task_Avalia">
+        <dc:Bounds x="580" y="680" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="GW_Validar_di" bpmnElement="GW_Validar" isMarkerVisible="true">
+        <dc:Bounds x="720" y="695" width="50" height="50" />
+        <bpmndi:BPMNLabel><dc:Bounds x="722" y="668" width="46" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Valida_di" bpmnElement="Task_Valida">
+        <dc:Bounds x="820" y="680" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Recusa_di" bpmnElement="Task_Recusa">
+        <dc:Bounds x="795" y="840" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_Recusada_di" bpmnElement="End_Recusada">
+        <dc:Bounds x="1000" y="862" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="960" y="905" width="120" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="GW_Pago_di" bpmnElement="GW_Pago" isMarkerVisible="true">
+        <dc:Bounds x="970" y="695" width="50" height="50" />
+        <bpmndi:BPMNLabel><dc:Bounds x="952" y="655" width="86" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Pago_di" bpmnElement="Task_Pago">
+        <dc:Bounds x="1060" y="680" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_ZIP_di" bpmnElement="Task_ZIP">
+        <dc:Bounds x="1185" y="680" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Excel_di" bpmnElement="Task_Excel">
+        <dc:Bounds x="1335" y="680" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Purge_di" bpmnElement="Task_Purge">
+        <dc:Bounds x="1485" y="680" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_Lote_di" bpmnElement="End_Lote">
+        <dc:Bounds x="1635" y="702" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1618" y="745" width="70" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNEdge id="Q01_di" bpmnElement="Q01">
+        <di:waypoint x="368" y="720" /><di:waypoint x="430" y="720" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Q02_di" bpmnElement="Q02">
+        <di:waypoint x="530" y="720" /><di:waypoint x="580" y="720" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Q03_di" bpmnElement="Q03">
+        <di:waypoint x="680" y="720" /><di:waypoint x="720" y="720" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Q04_di" bpmnElement="Q04">
+        <di:waypoint x="770" y="720" /><di:waypoint x="820" y="720" />
+        <bpmndi:BPMNLabel><dc:Bounds x="782" y="700" width="24" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Q05_di" bpmnElement="Q05">
+        <di:waypoint x="745" y="745" /><di:waypoint x="745" y="880" /><di:waypoint x="795" y="880" />
+        <bpmndi:BPMNLabel><dc:Bounds x="752" y="800" width="26" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Q06_di" bpmnElement="Q06">
+        <di:waypoint x="895" y="880" /><di:waypoint x="1000" y="880" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Q07_di" bpmnElement="Q07">
+        <di:waypoint x="920" y="720" /><di:waypoint x="970" y="720" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Q08_di" bpmnElement="Q08">
+        <di:waypoint x="1020" y="720" /><di:waypoint x="1060" y="720" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1028" y="700" width="24" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Q09_di" bpmnElement="Q09">
+        <di:waypoint x="1160" y="720" /><di:waypoint x="1185" y="720" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Q10_di" bpmnElement="Q10">
+        <di:waypoint x="995" y="745" /><di:waypoint x="995" y="800" /><di:waypoint x="1235" y="800" /><di:waypoint x="1235" y="760" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1002" y="768" width="26" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Q11_di" bpmnElement="Q11">
+        <di:waypoint x="1285" y="720" /><di:waypoint x="1335" y="720" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Q12_di" bpmnElement="Q12">
+        <di:waypoint x="1435" y="720" /><di:waypoint x="1485" y="720" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Q13_di" bpmnElement="Q13">
+        <di:waypoint x="1585" y="720" /><di:waypoint x="1635" y="720" />
+      </bpmndi:BPMNEdge>
+
+      <!-- message flows -->
+      <bpmndi:BPMNEdge id="MF_Upload_di" bpmnElement="MF_Upload">
+        <di:waypoint x="1130" y="260" /><di:waypoint x="1130" y="140" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1138" y="180" width="150" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="MF_Metadados_di" bpmnElement="MF_Metadados">
+        <di:waypoint x="1300" y="340" /><di:waypoint x="1300" y="1080" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1308" y="1030" width="120" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="MF_FotoNaFila_di" bpmnElement="MF_FotoNaFila">
+        <di:waypoint x="1260" y="340" /><di:waypoint x="1260" y="580" /><di:waypoint x="350" y="580" /><di:waypoint x="350" y="702" />
+        <bpmndi:BPMNLabel><dc:Bounds x="620" y="562" width="200" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="MF_BaixaZip_di" bpmnElement="MF_BaixaZip">
+        <di:waypoint x="1205" y="680" /><di:waypoint x="1205" y="140" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1213" y="620" width="210" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="MF_PurgeImg_di" bpmnElement="MF_PurgeImg">
+        <di:waypoint x="1560" y="680" /><di:waypoint x="1560" y="110" /><di:waypoint x="1350" y="110" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1400" y="90" width="120" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="MF_PurgeReg_di" bpmnElement="MF_PurgeReg">
+        <di:waypoint x="1535" y="760" /><di:waypoint x="1535" y="1080" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1543" y="1030" width="180" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

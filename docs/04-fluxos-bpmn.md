@@ -1,5 +1,9 @@
 # 04 — Fluxos de Negócio (BPMN)
 
+> **Artefato normativo:** o processo ponta-a-ponta existe em BPMN 2.0 de verdade em
+> [`bpmn/01-envio-e-avaliacao.bpmn`](bpmn/01-envio-e-avaliacao.bpmn) (Camunda Modeler /
+> bpmn.io). Em divergência com o Mermaid abaixo, **vale o `.bpmn`**.
+
 ## Processo ponta-a-ponta
 
 Da foto no campo ao relatório, com as raias dos dois papéis e dos sistemas externos.

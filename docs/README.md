@@ -6,6 +6,10 @@ baixa em ZIP organizado por região e exporta para Excel no modelo das planilhas
 
 > Os diagramas estão em **Mermaid** — renderizam direto no GitHub, GitLab, VS Code
 > (extensão *Markdown Preview Mermaid*) e no Confluence (macro Mermaid).
+>
+> Os processos de negócio também existem em **BPMN 2.0 de verdade** em
+> [`docs/bpmn/`](bpmn/) (abrem no Camunda Modeler / bpmn.io). **Em divergência,
+> o `.bpmn` é o normativo** — o Mermaid é explicativo.
 
 ## Índice
 
