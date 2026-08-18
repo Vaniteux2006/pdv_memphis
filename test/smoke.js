@@ -159,7 +159,12 @@ async function uploadCloud(cookie, tipo, file, filename, ct) {
   const fotoR = await uploadCloud(pc, 'fotos', jpeg, 'r.jpg', 'image/jpeg');
   await req('POST', '/api/submissions', { cookie: pc, body: { cliente: 'LOJA RECUSADA', endereco: 'R', dataExposicao: '2026-06-20', regiao: 'CN', grupo: '', promotor: ref.promotores[1], fotos: [fotoR] } });
   const subR = J((await req('GET', '/api/admin/submissions?status=novos', { cookie: ac })).body).itens[0];
-  await req('PATCH', '/api/admin/submissions/' + subR.id, { cookie: ac, body: { validado: false } });
+  // recusar sem motivo não passa mais — o promotor vê o motivo, então "Recusada" sozinho seria a queixa antiga
+  const semMotivo = await req('PATCH', '/api/admin/submissions/' + subR.id, { cookie: ac, body: { validado: false } });
+  ck('recusar sem motivo é recusado (400)', semMotivo.status === 400 && /motivo/i.test(J(semMotivo.body).error || ''), J(semMotivo.body).error || '');
+  const comMotivo = await req('PATCH', '/api/admin/submissions/' + subR.id, { cookie: ac, body: { validado: false, motivoRecusa: 'Foto fora de foco' } });
+  ck('recusar com motivo grava o motivo', comMotivo.status === 200 && J(comMotivo.body).motivoRecusa === 'Foto fora de foco', J(comMotivo.body).error || '');
+  ck('promotor enxerga o motivo da recusa', J((await req('GET', '/api/my/submissions', { cookie: pc })).body).find((x) => x.id === subR.id).motivoRecusa === 'Foto fora de foco');
   const manR = J((await req('GET', '/api/admin/download-manifest?onlyNew=0', { cookie: ac })).body);
   ck('foto recusada não entra no download', manR.count === 0 && manR.items.every((i) => i.id !== subR.id), 'count=' + manR.count);
   // ao validar, volta a ser baixável

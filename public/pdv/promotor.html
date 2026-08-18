@@ -54,6 +54,12 @@
         <datalist id="grupos-dl"></datalist>
 
         <label>Fotos (1 imagem — ou 2 se for "antes e depois")</label>
+        <div class="muted" style="background:var(--bg-soft);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:10px;line-height:1.55;">
+          📸 <b>Fotografe só a exposição.</b> Evite enquadrar clientes e funcionários da loja —
+          eles não fazem parte da campanha. Sua foto é vista apenas pela equipe da Memphis,
+          fica guardada por <b>2 meses</b> e depois é apagada.
+          <a href="/politica-de-privacidade.html" target="_blank" rel="noopener">Como tratamos seus dados</a>.
+        </div>
         <input id="fotos" type="file" accept="image/*" capture="environment" multiple hidden />
         <div class="thumbs" id="thumbs"></div>
         <button type="button" class="add-foto" id="addfoto">📷 Adicionar foto</button>
@@ -71,7 +77,7 @@
 
     <div class="card" style="border-left:3px solid var(--teal);background:var(--teal-soft);">
       <div style="font-size:14px;">⚠️ Achou que houve algum engano ou equívoco na avaliação?
-        Mande mensagem para <b>(55) 51 9893-6997</b>.</div>
+        Mande mensagem para <b id="contato-tel">—</b>.</div>
     </div>
   </main>
 
@@ -100,6 +106,11 @@
         'Hoje: ' + new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
       document.getElementById('sm-now').textContent = ref.senhas.senhaMensal || 'aguarde a senha';
       document.getElementById('ss-now').textContent = ref.senhas.senhaSemanal || 'aguarde a senha';
+      // telefone de contato vem do config (aba Listas) — antes estava cravado no HTML,
+      // e trocar o número exigia deploy
+      fetch('/api/contato').then((r) => r.json())
+        .then((c) => { if (c.contatoTelefone) document.getElementById('contato-tel').textContent = c.contatoTelefone; })
+        .catch(() => {});
       prefill();
       renderThumbs(); // mostra a dica de quantas fotos dá pra mandar (limite vem do servidor)
       loadMine();
@@ -272,6 +283,18 @@
       const cor = PREAV_COR[v] || 'var(--muted)';
       return `<span class="pill" style="background:${cor};color:#fff;border-color:transparent">${esc(v)}</span>`;
     }
+    // O motivo da recusa SEMPRE viajou no payload de /api/my/submissions — só nunca era
+    // desenhado, então o promotor lia "Recusada" sem saber o porquê e vinha cobrar a equipe.
+    // Motivo e observação andam juntos aqui: separados, a observação parecia comentário solto.
+    function recusaBox(s) {
+      if (s.validado !== false) return '';
+      const motivo = s.motivoRecusa ? `<div><b>Motivo:</b> ${esc(s.motivoRecusa)}</div>` : '';
+      const obs = s.observacao ? `<div style="margin-top:4px;"><b>Obs:</b> ${esc(s.observacao)}</div>` : '';
+      const nada = !motivo && !obs
+        ? '<div class="muted">Sem motivo registrado — fale com a equipe se precisar entender.</div>' : '';
+      return `<div class="tags" style="margin-top:8px;border-left:3px solid var(--red);background:var(--bg-soft);
+        border-radius:0 6px 6px 0;padding:8px 10px;line-height:1.5;">${motivo}${obs}${nada}</div>`;
+    }
     function card(s) {
       const val = s.validado === true ? '<span class="pill on">Validada</span>'
         : s.validado === false ? '<span class="pill" style="color:var(--red)">Recusada</span>'
@@ -287,7 +310,8 @@
             <span class="muted">Exposição: ${s.dataExposicao ? new Date(s.dataExposicao + 'T00:00').toLocaleDateString('pt-BR') : '—'}</span></div>
           ${val} ${preavPill(s.preAvaliacao)}${pago}
           ${(s.pontosExtra || []).length ? `<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;">${s.pontosExtra.map((p) => `<span class="pill" style="background:${corPonto(p)};color:#fff;border-color:transparent">${esc(p)}</span>`).join('')}</div>` : ''}
-          ${s.observacao ? `<div class="tags" style="margin-top:6px;"><b>Obs:</b> ${esc(s.observacao)}</div>` : ''}
+          ${recusaBox(s)}
+          ${s.observacao && s.validado !== false ? `<div class="tags" style="margin-top:6px;"><b>Obs:</b> ${esc(s.observacao)}</div>` : ''}
         </div>
       </div>`;
     }

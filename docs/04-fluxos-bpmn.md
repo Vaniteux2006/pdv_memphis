@@ -128,6 +128,7 @@ stateDiagram-v2
 | Grupo é do **promotor** | envio | A equipe não edita grupo; grupo novo vai pra fila de aprovação. |
 | Baixar **não apaga** | `mark-downloaded` | Só marca `baixado=true`. A remoção é uma ação separada e explícita (`purge` ou exclusão individual). |
 | Foto **recusada não é baixada** | `/api/admin/download-manifest` | `validado === false` fica de fora do ZIP. Ao validar, volta a ser baixável. |
+| **Motivo obrigatório ao recusar** | `updateSubmission` | O promotor **vê** o motivo na tela dele; recusar sem um deixaria só "Recusada" sem explicação — que é a queixa que originou a mudança. A lista tem **"Outros"** como escape, então ninguém fica preso no meio de um lote. |
 | Pasta do ZIP = "COLAR EM PASTAS" | `/api/admin/download-manifest` | `Região / "REF - Cliente - Promotor"`, espelhando o servidor interno. |
 | Senha provisória exige troca | login → `trocar-senha.html` | Contas criadas em massa/por planilha e senhas redefinidas pelo admin nascem com `mustChangePassword`. |
 | Senha **"0"** = primeiro acesso | login → `trocar-senha.html?primeiro=1` | A pessoa entra com `0` e cai numa tela de **boas-vindas** pra criar a própria senha (sem digitar a provisória). Vale na planilha e na criação manual. |

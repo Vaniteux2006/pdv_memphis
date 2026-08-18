@@ -44,7 +44,7 @@ enviado automaticamente pelo navegador. Erros retornam `{ "error": "mensagem" }`
 | POST | `/api/submissions` | 🔑 | `{ cliente, endereco, dataExposicao, regiao, grupo, promotor, fotos:[{publicId,resourceType,originalName}] }` | Registra **1 foto** (= 1 ou **2 imagens**, "antes e depois"), já enviadas ao Cloudinary. Valida campos, prefixo da pasta e os **limites por promotor: 1 foto/semana e 4/mês** (pela data da exposição). Grupo que não está na lista oficial entra na fila de aprovação. |
 | GET | `/api/my/submissions` | 🔑 | — | Fotos do próprio promotor logado. |
 | GET | `/api/admin/submissions` | 👑 `fotos` | `?q=&regiao=&grupo=&status=` | Lista/busca todas. `status`: `novos\|baixados\|validados\|recusados`. |
-| PATCH | `/api/admin/submissions/:id` | 👑 `fotos` | `{ preAvaliacao?, pontosExtra?, validado?, pago?, observacao?, baixado? }` | Avalia/atualiza a foto (só campos da lista branca). |
+| PATCH | `/api/admin/submissions/:id` | 👑 `fotos` | `{ preAvaliacao?, pontosExtra?, validado?, motivoRecusa?, pago?, observacao?, baixado? }` | Avalia/atualiza a foto (só campos da lista branca). `pontosExtra` é validado contra a lista vigente. **`validado: false` exige `motivoRecusa`** (400 sem ele) — o promotor lê esse motivo. |
 | DELETE | `/api/admin/submissions/:id` | 👑 `fotos` | — | **Exclui a foto de vez** (Mongo + todas as imagens no Cloudinary). |
 | GET | `/api/file/:id/:idx?` | 🔑 | — | **302** → URL assinada da imagem no Cloudinary. `:idx` escolhe a imagem (0 ou 1, p/ "antes e depois"). Promotor só acessa as próprias. |
 

@@ -1845,9 +1845,15 @@
           return setField(d.id, 'preAvaliacao', s && s.preAvaliacao === d.val ? '' : d.val);
         }
         case 'set-validado': {
+          const s = subsCache.find((x) => x.id === d.id);
           if (d.val === '1') {
-            const s = subsCache.find((x) => x.id === d.id);
             if (s && !s.preAvaliacao && !confirm('Aprovar sem pré-avaliação (Regular/Bom/Excelente)?')) return;
+          } else if (s && !String(s.motivoRecusa || '').trim()) {
+            // o promotor vê o motivo na tela dele — recusar sem escolher um deixaria só
+            // "Recusada" e nenhuma explicação. O servidor barra de qualquer forma; avisar
+            // aqui evita o erro genérico e diz o que fazer.
+            toast('Escolha o motivo antes de recusar — é o que o promotor vai ler.', 'bad');
+            return;
           }
           return setField(d.id, 'validado', d.val === '1');
         }

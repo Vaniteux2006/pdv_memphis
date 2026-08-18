@@ -340,9 +340,9 @@ async function semear() {
     } else if (sorte < limiteRecusar) {
       patch.validado = false;
       patch.preAvaliacao = 'REGULAR';
-      // motivo pela lista oficial (é o que a aderência soma); uma fatia fica sem motivo
-      // de propósito, pra a tela ter o que mostrar no aviso de "recusadas sem motivo"
-      if (chance(0.85)) patch.motivoRecusa = pick(ref.motivosRecusa);
+      // motivo é obrigatório ao recusar desde que o promotor passou a vê-lo (plano LGPD 1.5.2),
+      // então a carga sempre escolhe um da lista oficial — é o que a aderência soma
+      patch.motivoRecusa = pick(ref.motivosRecusa);
       patch.observacao = pick(OBS_RECUSA);
       contagem.recusadas++;
     } else {
