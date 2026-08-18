@@ -36,6 +36,10 @@
         <input id="password" type="password" autocomplete="new-password" required minlength="6" />
         <label for="password2">Confirmar senha</label>
         <input id="password2" type="password" autocomplete="new-password" required minlength="6" />
+        <label for="aceite" style="display:flex;align-items:flex-start;gap:9px;margin-top:16px;cursor:pointer;font-weight:400;line-height:1.5;color:var(--ink);">
+          <input type="checkbox" id="aceite" required style="width:auto;margin:2px 0 0;flex:0 0 auto;" />
+          <span>Li e aceito a <a href="/politica-de-privacidade.html" target="_blank" rel="noopener">política de privacidade</a>.</span>
+        </label>
         <div class="err" id="err" role="alert"></div>
         <button type="submit" id="btn" style="width:100%; margin-top:8px;">Criar conta</button>
       </form>
@@ -89,6 +93,7 @@
             regiao: document.getElementById('regiao').value,
             grupo: document.getElementById('grupo').value,
             password: pw,
+            aceitePolitica: document.getElementById('aceite').checked,
           }),
         });
         const data = await res.json().catch(() => ({}));

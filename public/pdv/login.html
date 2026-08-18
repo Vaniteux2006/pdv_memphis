@@ -52,6 +52,7 @@
         if (me.ok) {
           const u = await me.json();
           if (u.mustChangePassword) location.href = '/pdv/trocar-senha.html';
+          else if (u.precisaAceitar) location.href = '/pdv/aceitar-politica.html';
           else location.href = u.role === 'admin' ? '/pdv/admin.html' : '/pdv/promotor.html';
         }
       } catch {}
@@ -83,6 +84,7 @@
         }
         // senha "0" = conta criada sem senha: cai na tela de boas-vindas pra criar a própria
         if (data.mustChangePassword) location.href = '/pdv/trocar-senha.html' + (pwInput.value === '0' ? '?primeiro=1' : '');
+        else if (data.precisaAceitar) location.href = '/pdv/aceitar-politica.html';
         else location.href = data.role === 'admin' ? '/pdv/admin.html' : '/pdv/promotor.html';
       } catch (ex) {
         err.textContent = 'Erro de conexão. Tente de novo.';

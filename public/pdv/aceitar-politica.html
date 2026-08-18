@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Memphis PDV — Política de privacidade</title>
+  <meta name="theme-color" content="#1c9cc0" />
+  <link rel="icon" href="/logo-memphis.webp" type="image/webp" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap" media="print" onload="this.media='all'" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="/"><img src="/logo-memphis.webp" alt="Memphis" class="brand-logo" /></a>
+    <button class="ghost" id="sair" style="padding:8px 16px;border:1px solid var(--line);border-radius:7px;color:var(--muted);font-size:13px;">Sair</button>
+  </header>
+
+  <div class="login-wrap">
+    <div class="card login-card">
+      <h1 id="titulo">Política de privacidade</h1>
+      <p class="muted" id="intro">Antes de continuar, precisamos que você leia e aceite como tratamos os seus dados.</p>
+
+      <div style="background:var(--bg-soft);border:1px solid var(--line);border-radius:8px;padding:14px 16px;margin:16px 0;font-size:14px;line-height:1.6;">
+        <p style="margin:0 0 10px;"><b>Em resumo:</b></p>
+        <ul style="margin:0;padding-left:18px;">
+          <li>Usamos seus dados para <b>operar a campanha de PDV</b> — receber as fotos, avaliar e apurar o pagamento.</li>
+          <li>As fotos são de <b>uso interno</b>. Não vão para marketing nem para redes sociais.</li>
+          <li>As imagens são apagadas <b>2 meses</b> após o envio.</li>
+          <li>Você pode pedir acesso, correção ou exclusão dos seus dados a qualquer momento.</li>
+        </ul>
+      </div>
+
+      <p style="font-size:14px;">
+        <a href="/politica-de-privacidade.html" target="_blank" rel="noopener"><b>Ler a política completa →</b></a>
+      </p>
+
+      <label for="aceite" style="display:flex;align-items:flex-start;gap:9px;margin-top:18px;cursor:pointer;font-weight:400;line-height:1.5;color:var(--ink);">
+        <input type="checkbox" id="aceite" style="width:auto;margin:2px 0 0;flex:0 0 auto;" />
+        <span>Li e aceito a política de privacidade.</span>
+      </label>
+
+      <div class="err" id="err" role="alert"></div>
+      <button id="btn" style="width:100%;margin-top:14px;" disabled>Aceitar e continuar</button>
+    </div>
+  </div>
+
+  <script src="/common.js"></script>
+  <script>
+    let destino = '/pdv/promotor.html';
+
+    (async () => {
+      try {
+        const r = await fetch('/api/me');
+        if (!r.ok) return void (location.href = '/pdv/login.html');
+        const u = await r.json();
+        destino = u.role === 'admin' ? '/pdv/admin.html' : '/pdv/promotor.html';
+        // senha provisória vem antes do aceite — é a ordem do primeiro acesso
+        if (u.mustChangePassword) return void (location.href = '/pdv/trocar-senha.html');
+        // já aceitou a versão vigente: não tem o que fazer aqui
+        if (!u.precisaAceitar) return void (location.href = destino);
+        // quem já aceitou uma versão ANTERIOR está revendo um texto que mudou — dizer isso
+        // evita a leitura de "por que estão me pedindo isso de novo?"
+        if (u.aceiteVersao) {
+          document.getElementById('titulo').textContent = 'A política mudou';
+          document.getElementById('intro').textContent =
+            'Atualizamos a política de privacidade. Dê uma olhada no que mudou e confirme para continuar.';
+        }
+      } catch { location.href = '/pdv/login.html'; }
+    })();
+
+    const chk = document.getElementById('aceite');
+    const btn = document.getElementById('btn');
+    chk.addEventListener('change', () => { btn.disabled = !chk.checked; });
+
+    btn.addEventListener('click', async () => {
+      if (!chk.checked) return;
+      btn.disabled = true; btn.textContent = 'Salvando...';
+      try {
+        const r = await fetch('/api/aceitar-politica', { method: 'POST' });
+        if (!r.ok) throw new Error(((await r.json().catch(() => ({}))).error) || 'Não foi possível registrar o aceite');
+        location.href = destino;
+      } catch (e) {
+        document.getElementById('err').textContent = e.message;
+        toast(e.message, 'bad');
+        btn.disabled = false; btn.textContent = 'Aceitar e continuar';
+      }
+    });
+
+    document.getElementById('sair').addEventListener('click', async () => {
+      await fetch('/api/logout', { method: 'POST' }).catch(() => {});
+      location.href = '/pdv/login.html';
+    });
+  </script>
+</body>
+</html>

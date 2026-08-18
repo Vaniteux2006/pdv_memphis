@@ -103,6 +103,10 @@ Contas de acesso (admins e promotores).
 - Perfil: `telefone` (só dígitos), `grupo`, `regiao`, `setor`, `matricula`
   (inteiro **único** entre as contas, ou `null`; **`0` também vale como "sem matrícula"** —
   promotor não tem — e vira `null`, sem travar duplicado).
+- `aceiteVersao` / `aceiteEm`: **aceite da política de privacidade** — a versão aceita
+  (ex.: `'2026-08'`) e quando. Guardar a *versão*, e não um booleano, é o que faz uma
+  política nova pedir aceite de novo. Conta do cadastro público já nasce com o aceite;
+  conta criada por importação nasce **sem**, e cai no portão do `requireAuth`.
 - Senha guardada como **hash bcrypt** — nunca em texto. Tokens de redefinição também
   só como hash (`resetTokenHash`, expira em 1h, uso único).
 

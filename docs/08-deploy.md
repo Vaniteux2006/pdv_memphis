@@ -82,6 +82,7 @@ subir pelo painel/bot e configurar as variáveis de ambiente (ou incluir o `.env
 | `CLOUDINARY_API_SECRET` | API secret (NUNCA exposto ao cliente) |
 | `SESSION_SECRET` | Segredo para assinar o JWT — **obrigatório em produção** (sem ele o boot aborta de propósito) |
 | `ADMIN_EMAIL` / `ADMIN_SENHA` | Credenciais do admin semeado no 1º boot; sem `ADMIN_SENHA`, a senha é sorteada e mostrada uma vez no log (troca obrigatória) |
+| `LGPD_BLOQUEIA` | `1` **tranca a API** de quem ainda não aceitou a política (403 + `precisaAceitar`). Sobe **desligado** de propósito: ligar de véspera travaria 1.4 mil promotores no dia do piloto. Ligue depois de validar com um grupo pequeno — a tela de aceite já aparece com ele desligado. Vale para **todos**, inclusive admins. |
 | `NODE_ENV` | `production` ativa o cookie `secure` |
 | `PORT` / `HOST` | Porta/host do listen (Discloud exige 8080 + 0.0.0.0 — já é o padrão) |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` | SMTP do email de redefinição de senha (ex: Gmail App Password) |

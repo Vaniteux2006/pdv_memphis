@@ -38,7 +38,10 @@
 
   <script src="/common.js"></script>
   <script>
-    let role = 'promotor';
+    let role = 'promotor', precisaAceitar = false;
+    // depois de criar a senha vem o aceite da política — os dois passos do primeiro acesso
+    const proximaTela = () => precisaAceitar ? '/pdv/aceitar-politica.html'
+      : (role === 'admin' ? '/pdv/admin.html' : '/pdv/promotor.html');
     // ?primeiro=1: conta criada com senha "0" — boas-vindas, sem pedir a provisória
     const primeiro = new URLSearchParams(location.search).get('primeiro') === '1';
     if (primeiro) {
@@ -53,8 +56,9 @@
         if (!me.ok) { location.href = '/pdv/login.html'; return; }
         const u = await me.json();
         role = u.role;
+        precisaAceitar = !!u.precisaAceitar;
         // se já trocou, não precisa ficar aqui
-        if (!u.mustChangePassword) location.href = role === 'admin' ? '/pdv/admin.html' : '/pdv/promotor.html';
+        if (!u.mustChangePassword) location.href = proximaTela();
       } catch { location.href = '/pdv/login.html'; }
     })();
 
@@ -68,7 +72,7 @@
       try {
         await api('/api/change-password', { method: 'POST', body: JSON.stringify({ currentPassword: a, newPassword: n }) });
         toast('Senha criada! Entrando...', 'ok');
-        setTimeout(() => (location.href = role === 'admin' ? '/pdv/admin.html' : '/pdv/promotor.html'), 1200);
+        setTimeout(() => (location.href = proximaTela()), 1200);
       } catch (ex) { err.textContent = ex.message; }
     });
   </script>

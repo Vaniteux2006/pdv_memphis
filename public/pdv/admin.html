@@ -370,6 +370,7 @@
     async function init() {
       me = await api('/api/me');
       if (me.mustChangePassword) { location.href = '/pdv/trocar-senha.html'; return; }
+      if (me.precisaAceitar) { location.href = '/pdv/aceitar-politica.html'; return; }
       document.getElementById('who').textContent = me.name + (me.setor ? ' · ' + me.setor : '');
       ref = await api('/api/reference');
       document.getElementById('f-regiao').innerHTML = '<option value="">Todas regiões</option>' +

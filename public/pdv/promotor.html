@@ -86,6 +86,7 @@
     async function init() {
       me = await api('/api/me');
       if (me.mustChangePassword) { location.href = '/pdv/trocar-senha.html'; return; }
+      if (me.precisaAceitar) { location.href = '/pdv/aceitar-politica.html'; return; }
       document.getElementById('who').textContent = me.name;
       ref = await api('/api/reference');
       limite = ref.imagensPorFoto || 2;

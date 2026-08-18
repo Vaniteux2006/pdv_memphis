@@ -119,6 +119,11 @@ app.use(ah(async (req, res, next) => { await ready(); next(); }));
 
 // Rotas liberadas pra quem ainda está com senha provisória — o mínimo pra conseguir trocá-la.
 const LIVRE_SEM_TROCAR_SENHA = new Set(['/api/me', '/api/change-password', '/api/logout', '/api/signup-info']);
+// Idem pra quem ainda não aceitou a política: o mínimo pra ler e aceitar.
+const LIVRE_SEM_ACEITE = new Set(['/api/me', '/api/aceitar-politica', '/api/logout', '/api/contato', '/api/change-password']);
+// O bloqueio começa DESLIGADO de propósito: ligar de véspera travaria 1.4 mil promotores
+// no dia do piloto. Sobe sem bloquear, valida com um grupo pequeno, e aí liga com a env.
+const LGPD_BLOQUEIA = process.env.LGPD_BLOQUEIA === '1';
 
 const requireAuth = ah(async (req, res, next) => {
   const token = req.cookies[COOKIE];
@@ -133,6 +138,14 @@ const requireAuth = ah(async (req, res, next) => {
   // provisória do onboarding em massa é previsível (PRIMEIRONOME + ano).
   if (u.mustChangePassword && !LIVRE_SEM_TROCAR_SENHA.has(req.path))
     return res.status(403).json({ error: 'Troque sua senha provisória antes de usar o sistema.', mustChangePassword: true });
+  // Portão do aceite da política. Vale mesmo com o banco zerado: quem nasce da importação
+  // do Valoo entra direto pelo login e nunca veria a tela de cadastro. Comparar a VERSÃO
+  // (e não um booleano) faz a política nova pedir aceite de novo, de graça.
+  if (LGPD_BLOQUEIA && !LIVRE_SEM_ACEITE.has(req.path)) {
+    const { politicaVersao } = await db.getInstitucionais();
+    if (u.aceiteVersao !== politicaVersao)
+      return res.status(403).json({ error: 'Aceite a política de privacidade para continuar.', precisaAceitar: true, politicaVersao });
+  }
   req.user = u;
   next();
 });
@@ -158,7 +171,13 @@ app.post('/api/login', loginLimiter, ah(async (req, res) => {
     return res.status(403).json({ error: 'Sua conta ainda está aguardando aprovação de um administrador. Você será avisado quando liberar.' });
   if (!u.active) return res.status(401).json({ error: 'E-mail ou senha incorretos' }); // banido: resposta genérica
   setAuthCookie(res, u);
-  res.json({ role: u.role, name: u.name, mustChangePassword: !!u.mustChangePassword });
+  // precisaAceitar vai já na resposta do login pra o redirect ser direto — sem isso a
+  // pessoa veria a tela errada piscar antes de o /api/me devolver
+  const { politicaVersao } = await db.getInstitucionais();
+  res.json({
+    role: u.role, name: u.name, mustChangePassword: !!u.mustChangePassword,
+    precisaAceitar: u.aceiteVersao !== politicaVersao,
+  });
 }));
 
 // ---------- cadastro público (sign up) ----------
@@ -179,7 +198,10 @@ app.post('/api/signup', signupLimiter, ah(async (req, res) => {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim())) return res.status(400).json({ error: 'E-mail inválido' });
     db.validaSenha(password); // erro vira 400 no catch abaixo
     if (regiao && !db.REGIOES.some((r) => r.sigla === regiao)) return res.status(400).json({ error: 'Região inválida' });
-    await db.createUser({ email, name, password, role: 'promotor', telefone, grupo, regiao, pendingApproval: true });
+    // o aceite se valida AQUI, não só no front: marcar a caixa no navegador não é prova de nada
+    if (!req.body.aceitePolitica) return res.status(400).json({ error: 'É preciso aceitar a política de privacidade para criar a conta' });
+    const { politicaVersao } = await db.getInstitucionais();
+    await db.createUser({ email, name, password, role: 'promotor', telefone, grupo, regiao, pendingApproval: true, aceiteVersao: politicaVersao });
     res.json({ ok: true, pending: true });
   } catch (e) { res.status(400).json({ error: e.message }); }
 }));
@@ -211,14 +233,28 @@ app.post('/api/reset-password', resetLimiter, ah(async (req, res) => {
   try { await db.resetPasswordWithToken(req.body.token, req.body.password); res.json({ ok: true }); }
   catch (e) { res.status(400).json({ error: e.message }); }
 }));
-app.get('/api/me', requireAuth, (req, res) =>
+
+// aceite da política — sempre carimba a versão VIGENTE no servidor, nunca a que o
+// cliente mandou (senão daria pra "aceitar" uma versão antiga e escapar do portão)
+app.post('/api/aceitar-politica', requireAuth, ah(async (req, res) => {
+  try { res.json(await db.registrarAceite(req.user.id)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+}));
+app.get('/api/me', requireAuth, ah(async (req, res) => {
+  const { politicaVersao } = await db.getInstitucionais();
   res.json({
     id: req.user.id, email: req.user.email, name: req.user.name, role: req.user.role,
     mustChangePassword: !!req.user.mustChangePassword,
     grupo: req.user.grupo || '', regiao: req.user.regiao || '', telefone: req.user.telefone || '',
     setor: req.user.setor || '', matricula: req.user.matricula ?? null,
     permissions: db.permissoesDe(req.user),
-  }));
+    // o front usa isto pra levar à tela de aceite. Vai mesmo com o bloqueio desligado:
+    // assim a tela já aparece no piloto, e ligar a env vira só o momento de trancar.
+    aceiteVersao: req.user.aceiteVersao || null,
+    precisaAceitar: req.user.aceiteVersao !== politicaVersao,
+    politicaVersao,
+  });
+}));
 
 // ---------- referência ----------
 // referência pré-serializada e pré-gzipada: é o maior payload do app (banco de promotores

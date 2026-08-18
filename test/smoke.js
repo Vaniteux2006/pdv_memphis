@@ -212,6 +212,34 @@ async function uploadCloud(cookie, tipo, file, filename, ct) {
   ck('promotor não acessa os institucionais (403)', (await req('PATCH', '/api/admin/institucionais', { cookie: pc, body: { contatoTelefone: '+55 11 90000-0000' } })).status === 403);
   ck('política de privacidade é servida na raiz', (await req('GET', '/politica-de-privacidade.html')).status === 200);
 
+  // ---- LGPD 1.2: aceite registrado ----
+  // o cadastro público exige o aceite NO SERVIDOR (marcar a caixa no front não prova nada)
+  // (o signup público exige e-mail com domínio completo, diferente do painel)
+  const semAceite = await req('POST', '/api/signup', { body: { name: 'Sem Aceite', email: 'semaceite_' + Date.now() + '@teste.com', password: 'senha1234' } });
+  ck('signup sem aceite é recusado (400)', semAceite.status === 400 && /polít/i.test(J(semAceite.body).error || ''), J(semAceite.body).error || '');
+  const emailAceite = 'comaceite_' + Date.now() + '@teste.com';
+  const comAceite = await req('POST', '/api/signup', { body: { name: 'Com Aceite', email: emailAceite, password: 'senha1234', aceitePolitica: true } });
+  ck('signup com aceite cria a conta', comAceite.status === 200, J(comAceite.body).error || '');
+  const versaoAtual = J((await req('GET', '/api/contato')).body).politicaVersao;
+  const criado = J((await req('GET', '/api/admin/users', { cookie: ac })).body).find((u) => u.email === emailAceite);
+  ck('aceite fica gravado no usuário com versão e data', criado && criado.aceiteVersao === versaoAtual && !!criado.aceiteEm,
+    criado ? 'versao=' + criado.aceiteVersao : 'conta não encontrada');
+  // quem nasce por importação NÃO tem aceite e o /api/me sinaliza isso
+  const meJoao = J((await req('GET', '/api/me', { cookie: pc })).body);
+  ck('conta criada pelo painel nasce sem aceite e /me pede', meJoao.precisaAceitar === true && meJoao.aceiteVersao === null);
+  ck('/me informa a versão vigente da política', meJoao.politicaVersao === versaoAtual);
+  // aceitar carimba a versão VIGENTE (o cliente não escolhe qual)
+  ck('POST /api/aceitar-politica registra', J((await req('POST', '/api/aceitar-politica', { cookie: pc, body: { versao: '1999-01' } })).body).aceiteVersao === versaoAtual);
+  const meDepois = J((await req('GET', '/api/me', { cookie: pc })).body);
+  ck('depois de aceitar, /me não pede mais', meDepois.precisaAceitar === false && meDepois.aceiteVersao === versaoAtual);
+  // mudar a versão da política faz todo mundo aceitar de novo — de graça
+  await req('PATCH', '/api/admin/institucionais', { cookie: ac, body: { politicaVersao: '2027-01' } });
+  ck('política nova volta a pedir aceite', J((await req('GET', '/api/me', { cookie: pc })).body).precisaAceitar === true);
+  await req('POST', '/api/aceitar-politica', { cookie: pc });
+  ck('aceite da versão nova libera', J((await req('GET', '/api/me', { cookie: pc })).body).precisaAceitar === false);
+  await req('PATCH', '/api/admin/institucionais', { cookie: ac, body: { politicaVersao: versaoAtual } }); // restaura
+  ck('tela de aceite existe', (await req('GET', '/pdv/aceitar-politica.html')).status === 200);
+
   // ---- recuperação de senha (link de redefinição) ----
   const fp = J((await req('POST', '/api/forgot-password', { body: { email: 'joao@local' } })).body);
   ck('forgot-password responde genérico + devLink', fp.ok === true && !!fp.devLink, fp.devLink && fp.devLink.slice(0, 40));
