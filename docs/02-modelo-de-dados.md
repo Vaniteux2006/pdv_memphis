@@ -139,6 +139,13 @@ Listas editáveis: `grupos` e `clientes` (usadas em autocomplete e filtros).
   campanha que o promotor vê na hora de enviar.
 - `crachaHash`: sha256 do **crachá de acesso total** vigente. O código em si aparece
   uma única vez pra quem gerou; gerar um novo substitui o hash (invalida o anterior).
+- **Dados institucionais da LGPD**, editáveis na aba Listas e servidos publicamente por
+  `GET /api/contato` (a política precisa ser legível antes do login):
+  `encarregadoEmail`, `contatoTelefone`, `politicaVersao` e `avisoTransicaoWhatsapp`
+  (permissão `listas`); `razaoSocial`, `cnpj` e `enderecoMatriz` (**acesso total**).
+  Ficam aqui, e não no `.env`, porque no Discloud mexer no `.env` exige painel + restart +
+  acesso do dono — e o encarregado precisa ser trocável por quem assumir depois.
+  Campo ausente cai num padrão embutido, então o sistema nunca fica sem contato.
 
 ## Índices (criados em `db.init()`)
 

@@ -30,6 +30,8 @@ enviado automaticamente pelo navegador. Erros retornam `{ "error": "mensagem" }`
 
 | Método | Rota | Acesso | Descrição |
 |--------|------|--------|-----------|
+| GET | `/api/contato` | — | Dados institucionais da LGPD (`razaoSocial`, `cnpj`, `enderecoMatriz`, `encarregadoEmail`, `contatoTelefone`, `politicaVersao`, `avisoTransicaoWhatsapp`). **Público de propósito:** a política precisa ser legível antes do login e o contato do encarregado é de divulgação obrigatória (Art. 41 §1º). |
+| PATCH | `/api/admin/institucionais` | 👑 `listas` | Edita os campos acima. Contato/versão exigem `listas`; `razaoSocial`, `cnpj` e `enderecoMatriz` exigem **acesso total** (`*`) — pedir sem ter dá **400**, não silêncio. |
 | GET | `/api/reference` | 🔑 | `{ regioes, pontosExtra, preAvaliacoes, cidades, grupos, clientes, promotores, limiteFotos, senhas }`. Servida de um **buffer pré-gzipado compartilhado** (maior payload do app). |
 | GET | `/api/check-promotor?nome=` | 🔑 | Checa o nome no banco: `{ existe, sugestoes:[...] }` |
 | GET | `/api/upload-signature?tipo=fotos` | 🔑 | Assinatura p/ upload direto no Cloudinary: `{ signature, timestamp, apiKey, cloudName, folder, type }` |

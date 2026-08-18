@@ -191,6 +191,27 @@ async function uploadCloud(cookie, tipo, file, filename, ct) {
   ck('após troca, /me não pede mais', J((await req('GET', '/api/me', { cookie: (await req('POST', '/api/login', { body: { email: 'novato@local', password: 'novasenha9' } })).cookie })).body).mustChangePassword === false);
   ck('senha provisória não loga mais', (await req('POST', '/api/login', { body: { email: 'novato@local', password: 'prov123' } })).status === 401);
 
+  // ---- LGPD 1.0: dados institucionais no config, com permissão graduada ----
+  const contatoPub = await req('GET', '/api/contato'); // SEM cookie: a política tem que ser legível deslogado
+  const cp = J(contatoPub.body);
+  ck('/api/contato é público e traz o encarregado', contatoPub.status === 200 && !!cp.encarregadoEmail && !!cp.contatoTelefone, cp.error || '');
+  ck('/api/contato traz razão social, CNPJ e versão da política', !!cp.razaoSocial && !!cp.cnpj && !!cp.politicaVersao);
+  // admin com acesso total edita contato E identificação
+  const instOk = await req('PATCH', '/api/admin/institucionais', { cookie: ac, body: { contatoTelefone: '+55 51 91111-2222', razaoSocial: 'Memphis S.A. Industrial' } });
+  ck('acesso total edita contato e razão social', instOk.status === 200 && J(instOk.body).contatoTelefone === '+55 51 91111-2222', J(instOk.body).error || '');
+  ck('e-mail de encarregado inválido é recusado', (await req('PATCH', '/api/admin/institucionais', { cookie: ac, body: { encarregadoEmail: 'nao-e-email' } })).status === 400);
+  ck('campo institucional vazio é recusado', (await req('PATCH', '/api/admin/institucionais', { cookie: ac, body: { contatoTelefone: '  ' } })).status === 400);
+  // admin só com 'listas' mexe no contato, mas NÃO na identificação da empresa
+  const listaEmail = 'listeiro_' + Date.now() + '@local';
+  await req('POST', '/api/admin/users', { cookie: ac, body: { name: 'Só Listas', email: listaEmail, password: 'listas123', role: 'admin', permissions: ['listas'] } });
+  const lc = (await req('POST', '/api/login', { body: { email: listaEmail, password: 'listas123' } })).cookie;
+  ck('admin de listas edita o contato', (await req('PATCH', '/api/admin/institucionais', { cookie: lc, body: { contatoTelefone: '+55 51 93333-4444' } })).status === 200);
+  const barrado = await req('PATCH', '/api/admin/institucionais', { cookie: lc, body: { razaoSocial: 'Empresa Falsa Ltda' } });
+  ck('admin de listas NÃO altera a razão social (400)', barrado.status === 400 && /acesso total/i.test(J(barrado.body).error || ''), J(barrado.body).error || '');
+  ck('razão social continua a original após a tentativa', J((await req('GET', '/api/contato')).body).razaoSocial === 'Memphis S.A. Industrial');
+  ck('promotor não acessa os institucionais (403)', (await req('PATCH', '/api/admin/institucionais', { cookie: pc, body: { contatoTelefone: '+55 11 90000-0000' } })).status === 403);
+  ck('política de privacidade é servida na raiz', (await req('GET', '/politica-de-privacidade.html')).status === 200);
+
   // ---- recuperação de senha (link de redefinição) ----
   const fp = J((await req('POST', '/api/forgot-password', { body: { email: 'joao@local' } })).body);
   ck('forgot-password responde genérico + devLink', fp.ok === true && !!fp.devLink, fp.devLink && fp.devLink.slice(0, 40));

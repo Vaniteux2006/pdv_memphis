@@ -165,6 +165,11 @@ app.post('/api/login', loginLimiter, ah(async (req, res) => {
 // dados fixos que a tela de cadastro precisa antes do login (só constantes de domínio)
 app.get('/api/signup-info', (req, res) => res.json({ regioes: db.REGIOES }));
 
+// Dados institucionais pra política de privacidade e rodapés. PÚBLICO de propósito:
+// a política tem que ser legível por quem ainda não é usuário, e o contato do
+// encarregado é de divulgação obrigatória (LGPD, Art. 41 §1º).
+app.get('/api/contato', ah(async (req, res) => res.json(await db.getInstitucionais())));
+
 // cria conta de PROMOTOR aguardando aprovação — um admin ativa na aba Contas.
 // role é sempre promotor (admin só nasce pelo painel); a pessoa já define a própria senha.
 app.post('/api/signup', signupLimiter, ah(async (req, res) => {
@@ -252,6 +257,12 @@ app.get('/api/upload-signature', requireAuth, ah(async (req, res) => {
 // admin define as senhas atuais (mensal/semanal) — vira entrada programada com início hoje
 app.patch('/api/admin/config', requireAuth, requirePerm('listas'), ah(async (req, res) => {
   try { res.json(await db.setConfig(req.body)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+}));
+// dados institucionais da LGPD. Contato e versão da política exigem 'listas';
+// razão social, CNPJ e endereço exigem acesso total (o db barra quem não tem).
+app.patch('/api/admin/institucionais', requireAuth, requirePerm('listas'), ah(async (req, res) => {
+  try { res.json(await db.setInstitucionais(req.body, { acessoTotal: db.temPerm(req.user, '*') })); }
   catch (e) { res.status(400).json({ error: e.message }); }
 }));
 // senhas programadas por data: {inicio -> senha} por tipo; o servidor escolhe a vigente sozinho

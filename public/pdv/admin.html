@@ -162,6 +162,41 @@
     <!-- LISTAS -->
     <section id="tab-listas" class="hidden">
       <div class="card">
+        <h2>🛡️ Dados da política de privacidade</h2>
+        <p class="muted">Alimentam a <a href="/politica-de-privacidade.html" target="_blank" rel="noopener">política de privacidade</a>
+          e os avisos do sistema. Ficam aqui, e não no código, pra que trocar o encarregado ou o
+          telefone não dependa de um deploy.</p>
+        <div class="row">
+          <div><label for="inst-email">E-mail do encarregado (DPO)</label><input id="inst-email" type="email" placeholder="encarregado@empresa.com" /></div>
+          <div><label for="inst-tel">Telefone de contato</label><input id="inst-tel" placeholder="+55 51 99999-9999" /></div>
+          <div><label for="inst-versao">Versão da política</label><input id="inst-versao" placeholder="2026-08" /></div>
+        </div>
+        <p class="muted" style="margin-top:8px;">O e-mail e o telefone aparecem <b>publicamente</b> na política — é
+          obrigação legal divulgar o canal do encarregado. Mudar a <b>versão</b> faz todo mundo aceitar a política
+          de novo no próximo acesso, então só mexa nela quando o texto mudar de verdade.</p>
+
+        <div id="inst-total-wrap" class="hidden" style="margin-top:16px;border-top:1px solid var(--line);padding-top:14px;">
+          <p class="muted" style="margin-bottom:4px;"><b>Identificação da empresa</b> — exige acesso total (crachá).</p>
+          <div class="row">
+            <div><label for="inst-razao">Razão social</label><input id="inst-razao" /></div>
+            <div><label for="inst-cnpj">CNPJ</label><input id="inst-cnpj" /></div>
+            <div><label for="inst-endereco">Endereço da matriz</label><input id="inst-endereco" /></div>
+          </div>
+        </div>
+
+        <label for="inst-aviso" style="margin-top:16px;display:flex;align-items:center;gap:8px;cursor:pointer;">
+          <input type="checkbox" id="inst-aviso" style="width:auto;margin:0;" />
+          <span>Mostrar o aviso de transição do WhatsApp na aba Aderência</span>
+        </label>
+        <p class="muted" style="margin-top:4px;">Enquanto WhatsApp e site coexistirem, parte das fotos não passa pelo
+          sistema e os números de participação saem <b>menores do que a realidade</b>. O aviso evita que alguém leia
+          "esse grupo não participa" quando a verdade é "esse grupo ainda está no WhatsApp".
+          <b>Desmarque quando o WhatsApp sair de cena.</b></p>
+
+        <button id="inst-save" style="margin-top:12px;">💾 Salvar dados institucionais</button>
+        <span id="inst-msg" class="muted" style="margin-left:10px;"></span>
+      </div>
+      <div class="card">
         <h2>🔑 Senhas da campanha</h2>
         <p class="muted">Vigentes agora (o que o promotor vê): Mensal <b id="sv-m">—</b> &nbsp;·&nbsp; Semanal <b id="sv-s">—</b></p>
         <div class="row">
@@ -407,7 +442,7 @@
         document.getElementById('tab-' + t).classList.toggle('hidden', t !== tab));
       if (tab === 'aprovar') loadPendentes();
       if (tab === 'promotores') loadUsers();
-      if (tab === 'listas') { renderLists(); loadSenhas().catch(() => {}); }
+      if (tab === 'listas') { renderLists(); loadSenhas().catch(() => {}); loadInstitucionais().catch(() => {}); }
       if (tab === 'aderencia') loadAderencia().catch((e) => toast(e.message, 'bad'));
       if (tab === 'graficos') loadGraficos().catch((e) => toast(e.message, 'bad'));
       pingPresenca(); // entrar/sair da aba Fotos entra e sai do aviso dos outros admins
@@ -1238,6 +1273,42 @@
       } catch (e) { toast(e.message, 'bad'); }
       btn.disabled = false; btn.textContent = '📥 Atualizar por planilha';
     });
+
+    // ---- dados institucionais da LGPD (alimentam a política de privacidade) ----
+    async function loadInstitucionais() {
+      const c = await (await fetch('/api/contato')).json(); // rota pública — a política também a usa
+      document.getElementById('inst-email').value = c.encarregadoEmail || '';
+      document.getElementById('inst-tel').value = c.contatoTelefone || '';
+      document.getElementById('inst-versao').value = c.politicaVersao || '';
+      document.getElementById('inst-aviso').checked = !!c.avisoTransicaoWhatsapp;
+      // razão social / CNPJ / endereço só aparecem pra quem tem crachá — o servidor barra de todo jeito,
+      // mas mostrar um campo que não salva é pior que não mostrar
+      document.getElementById('inst-total-wrap').classList.toggle('hidden', !eu('*'));
+      if (eu('*')) {
+        document.getElementById('inst-razao').value = c.razaoSocial || '';
+        document.getElementById('inst-cnpj').value = c.cnpj || '';
+        document.getElementById('inst-endereco').value = c.enderecoMatriz || '';
+      }
+    }
+    document.getElementById('inst-save').onclick = async () => {
+      const body = {
+        encarregadoEmail: val('inst-email').trim(),
+        contatoTelefone: val('inst-tel').trim(),
+        politicaVersao: val('inst-versao').trim(),
+        avisoTransicaoWhatsapp: document.getElementById('inst-aviso').checked,
+      };
+      if (eu('*')) Object.assign(body, {
+        razaoSocial: val('inst-razao').trim(),
+        cnpj: val('inst-cnpj').trim(),
+        enderecoMatriz: val('inst-endereco').trim(),
+      });
+      const msg = document.getElementById('inst-msg');
+      try {
+        await api('/api/admin/institucionais', { method: 'PATCH', body: JSON.stringify(body) });
+        msg.textContent = 'Salvo ✓'; toast('Dados institucionais salvos ✓');
+        setTimeout(() => { msg.textContent = ''; }, 3000);
+      } catch (e) { msg.textContent = ''; toast(e.message, 'bad'); }
+    };
 
     // ---- senhas programadas por data ----
     let senhasProg = null;
