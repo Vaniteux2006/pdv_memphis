@@ -370,6 +370,23 @@ async function uploadCloud(cookie, tipo, file, filename, ct) {
   ck('reenviar convite gera link novo', !!reenv.devLink && /convite=1/.test(reenv.devLink));
   ck('reenvio fica na auditoria', J((await req('GET', '/api/admin/auditoria?acao=reenviou_convite', { cookie: ac })).body).total >= 1);
 
+
+  // ---- LGPD 1.8: backup e reset de cadastros ----
+  const bk = await req('POST', '/api/admin/backup', { cookie: ac });
+  const bkd = J(bk.body);
+  ck('gera backup e devolve o arquivo', bk.status === 200 && !!bkd.storedFile && bkd.contagens.users > 0, bkd.error || '');
+  ck('backup fica listado com a retenção declarada', J((await req('GET', '/api/admin/backup', { cookie: ac })).body).retencaoDias === 150);
+  ck('download do backup sai por URL assinada (302)', (await req('GET', '/api/admin/backup/baixar?arquivo=' + encodeURIComponent(bkd.storedFile), { cookie: ac })).status === 302);
+  ck('arquivo inexistente não redireciona (404)', (await req('GET', '/api/admin/backup/baixar?arquivo=nao-existe', { cookie: ac })).status === 404);
+  ck('backup exige acesso total (403 pra admin de contas)', (await req('POST', '/api/admin/backup', { cookie: clc })).status === 403);
+  ck('backup fica na auditoria', J((await req('GET', '/api/admin/auditoria?acao=gerou_backup', { cookie: ac })).body).total >= 1);
+
+  // reset: cerimônia
+  ck('reset sem digitar a palavra é recusado', (await req('POST', '/api/admin/reset-cadastros', { cookie: ac, body: { confirmacao: 'sim' } })).status === 400);
+  ck('reset exige acesso total', (await req('POST', '/api/admin/reset-cadastros', { cookie: clc, body: { confirmacao: 'RESETAR' } })).status === 403);
+  const contasAntes = J((await req('GET', '/api/admin/users', { cookie: ac })).body).length;
+  ck('nada foi apagado pelas tentativas recusadas', J((await req('GET', '/api/admin/users', { cookie: ac })).body).length === contasAntes);
+
   // ---- recuperação de senha (link de redefinição) ----
   const fp = J((await req('POST', '/api/forgot-password', { body: { email: 'joao@local' } })).body);
   ck('forgot-password responde genérico + devLink', fp.ok === true && !!fp.devLink, fp.devLink && fp.devLink.slice(0, 40));

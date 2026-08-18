@@ -1140,6 +1140,59 @@ app.post('/api/admin/users/:id/convite', requireAuth, requirePerm('contas'), ah(
   } catch (e) { res.status(400).json({ error: e.message }); }
 }));
 
+// ---------- backup e reset de cadastros (LGPD 1.8) ----------
+// Sobe o dump como arquivo `raw` AUTENTICADO no Cloudinary: a URL só funciona assinada.
+async function gerarBackup(req) {
+  const dump = await db.montarBackup();
+  const buf = Buffer.from(JSON.stringify(dump), 'utf8');
+  const up = await store.uploadBuffer(buf, { folder: 'memphis-pdv/backups', resourceType: 'raw' });
+  const doc = { storedFile: up.id, bytes: up.bytes, contagens: dump.contagens, por: req.user?.name || '' };
+  await db.registrarBackup(doc);
+  return doc;
+}
+
+app.post('/api/admin/backup', requireAuth, requirePerm('*'), ah(async (req, res) => {
+  try {
+    const doc = await gerarBackup(req);
+    await auditar(req, { acao: db.ACOES.GEROU_BACKUP, alvo: doc.storedFile, qtd: doc.contagens.users });
+    res.json({ ok: true, ...doc });
+  } catch (e) { res.status(500).json({ error: 'Backup falhou: ' + e.message }); }
+}));
+
+app.get('/api/admin/backup', requireAuth, requirePerm('*'), ah(async (req, res) =>
+  res.json({ itens: await db.listBackups(), retencaoDias: db.BACKUP_DIAS })));
+
+// Download por URL assinada com expiração — backup é dado pessoal, o mesmo tratamento
+// das fotos. Sem uma rota de volta, "ter backup" seria teatro (não daria pra restaurar).
+app.get('/api/admin/backup/baixar', requireAuth, requirePerm('*'), ah(async (req, res) => {
+  const alvo = String(req.query.arquivo || '');
+  const existe = (await db.listBackups()).some((b) => b.storedFile === alvo);
+  if (!existe) return res.status(404).json({ error: 'Backup não encontrado' });
+  await auditar(req, { acao: db.ACOES.BAIXOU_BACKUP, alvo });
+  res.redirect(store.urlFor(alvo, 'raw'));
+}));
+
+// A ação mais destrutiva do sistema: apaga o cadastro de ~1.400 pessoas.
+// Cerimônia proporcional — crachá, confirmação por DIGITAÇÃO (não um confirm() de uma
+// tecla) e backup obrigatório ANTES. Se o backup falhar, ABORTA: não segue "porque o
+// usuário mandou".
+const PALAVRA_RESET = 'RESETAR';
+app.post('/api/admin/reset-cadastros', requireAuth, requirePerm('*'), ah(async (req, res) => {
+  if (String(req.body?.confirmacao || '').trim().toUpperCase() !== PALAVRA_RESET)
+    return res.status(400).json({ error: `Digite ${PALAVRA_RESET} para confirmar.` });
+  let backup;
+  try {
+    backup = await gerarBackup(req);
+  } catch (e) {
+    await auditar(req, { acao: db.ACOES.RESET_ABORTADO, detalhe: 'backup falhou: ' + e.message });
+    return res.status(500).json({ error: 'Backup falhou — nada foi apagado. ' + e.message });
+  }
+  const r = await db.resetarCadastros(req.user.id);
+  await auditar(req, { acao: db.ACOES.RESETOU_CADASTROS, qtd: r.contas,
+    detalhe: `${r.contas} conta(s), ${r.promotores} nome(s), ${r.pendentes} pendente(s), ${r.retornos} retorno(s) · backup ${backup.storedFile}` });
+  res.json({ ok: true, ...r, backup: backup.storedFile });
+}));
+
 // ---------- retenção automática (LGPD 1.5) ----------
 // Roda como setInterval no boot: o Discloud mantém o processo vivo, então não precisa de
 // cron externo. Nasce em MODO SÓ-RELATÓRIO — lista o que apagaria e não apaga nada.
@@ -1171,6 +1224,14 @@ async function rodarRetencao({ manual = false, user = null } = {}) {
     resumo.anonimizadas = await db.anonimizarSubmissions(subs);
   }
   if (RETENCAO_APAGA) resumo.identidadesRemovidas = await db.removerIdentidadeAntiga();
+  // backups vencidos somem junto — senão acumulam pra sempre, que é o problema que a
+  // retenção existe pra resolver (e backup é dado pessoal)
+  const vencidos = await db.backupsVencidos();
+  resumo.backupsVencidos = vencidos.length;
+  if (RETENCAO_APAGA && vencidos.length) {
+    for (const b of vencidos) await store.remove(b.storedFile, 'raw');
+    await db.removerBackupsDoRegistro(vencidos.map((b) => b.storedFile));
+  }
 
   resumo.duracaoMs = Date.now() - inicio;
   const linha = `[retencao] ${resumo.modo}: ${resumo.candidatas} candidata(s), ` +

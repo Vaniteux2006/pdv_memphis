@@ -151,6 +151,35 @@ node test/pentest.js
 > **persistente** (Discloud). Na Vercel (serverless), cada instância tem sua própria
 > contagem — ali precisaria de um store compartilhado (ex: Redis/Upstash).
 
+## Backup e reset de cadastros (LGPD 1.8)
+
+⚠️ **O backup é dado pessoal** — não é um arquivo neutro, é a base inteira de pessoas.
+Por isso: retenção declarada de **5 meses**, acesso restrito a **acesso total**, entrega
+sempre por **URL assinada** (arquivo `raw` autenticado no Cloudinary) e expiração
+automática na mesma rotina diária da retenção.
+
+| Rota | Acesso | O que faz |
+|---|---|---|
+| `POST /api/admin/backup` | 🪪 `*` | Dump de `users`, `promotores`, `refdata` e `config`. |
+| `GET /api/admin/backup` | 🪪 `*` | Lista os backups e a retenção declarada. |
+| `GET /api/admin/backup/baixar?arquivo=` | 🪪 `*` | **302** → URL assinada. Sem caminho de volta, "ter backup" seria teatro. |
+| `POST /api/admin/reset-cadastros` | 🪪 `*` | Apaga a base de pessoas. Ver cerimônia abaixo. |
+
+**Cerimônia do reset** (é a ação mais destrutiva do sistema — apaga o cadastro de ~1.400
+pessoas, e um clique errado aqui não tem desfazer):
+1. **Só com acesso total** (crachá) — não basta a permissão `contas`.
+2. **Confirmação por digitação** da palavra `RESETAR`, não um `confirm()` de uma tecla.
+3. **Backup automático ANTES, obrigatório.** Se o backup falhar, a operação **aborta** —
+   não segue "porque o usuário mandou". Testado em `test/reset.js`.
+4. **Registro na auditoria**, com quem, quando, quanto e qual backup.
+5. **Nunca apaga quem executou** nem os outros admins — senão o sistema fica sem
+   administrador e ninguém entra.
+
+> **Conflito com o direito de eliminação, declarado na política:** se um titular pedir
+> exclusão e existir backup com os dados dele, não dá para "apagar do backup" sem corromper
+> o arquivo. Prática adotada: backups **não são usados para reprocessar dados** e expiram
+> sozinhos no prazo declarado.
+
 ## Front-end, SEO e acessibilidade (revisão ago/2026)
 
 | Item | Estado | Observação |

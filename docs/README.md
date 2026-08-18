@@ -64,11 +64,13 @@ flowchart LR
 
 ## Teste de regressão
 
-`test/smoke.js` roda ~**85 verificações** ponta-a-ponta (auth, permissões, upload no
+`test/smoke.js` roda ~**129 verificações** ponta-a-ponta (auth, permissões, upload no
 Cloudinary, avaliação, pago, banir, criar admin, senha provisória, reset por email,
 ZIP, Excel, purge, dados institucionais, aceite e auditoria da LGPD). Há também `test/pentest.js`
-(segurança, 45 verificações), `test/lgpd-portao.js` (o portão do aceite — sobe o
-próprio servidor com `LGPD_BLOQUEIA=1`) e `test/carga.js` (escala).
+(segurança, 45 verificações) e mais três suítes que sobem/limpam o próprio ambiente:
+`test/lgpd-portao.js` (portão do aceite, com `LGPD_BLOQUEIA=1`), `test/retencao.js`
+(retenção e anonimização, envelhecendo fotos na marra) e `test/reset.js` (o reset
+destrutivo, inclusive o abort quando o backup falha). Há também `test/carga.js` (escala).
 
 ```bash
 node tools/dev-preview.js   # sobe o servidor no banco de TESTE (porta 3000)

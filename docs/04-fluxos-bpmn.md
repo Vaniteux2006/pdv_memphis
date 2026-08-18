@@ -85,7 +85,7 @@ flowchart LR
 ```mermaid
 flowchart LR
   E1["Admin envia .xlsx<br/>(Nome, E-mail, ...)"] --> E2{"E-mail já<br/>cadastrado?"}
-  E2 -- Não --> E3["Cria conta com senha provisória<br/>PRIMEIRONOME+ano<br/>+ troca obrigatória"]
+  E2 -- Não --> E3["Cria conta SEM senha utilizável<br/>+ convite por e-mail (7 dias)<br/>ou senha aleatória se não houver e-mail"]
   E2 -- Sim --> E4["Atualiza só o perfil<br/>(não mexe na senha)"]
   E3 --> E5["Resumo na tela + CSV<br/>com as senhas provisórias"]
   E4 --> E5

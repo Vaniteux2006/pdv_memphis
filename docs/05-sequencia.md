@@ -124,7 +124,7 @@ sequenceDiagram
   loop cada linha (máx 500, deduplicada por e-mail)
     S->>DB: findUserByEmail(email)
     alt e-mail novo
-      S->>DB: createUser(senha provisória PRIMEIRONOME+ano,<br/>mustChangePassword=true)
+      S->>DB: createUser(senha aleatória,<br/>mustChangePassword=true) + token de convite
     else já existe
       S->>DB: updateUser(só os campos preenchidos — senha intocada)
     end
