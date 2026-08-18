@@ -809,6 +809,12 @@ app.post('/api/submissions', requireAuth, ah(async (req, res) => {
 app.get('/api/my/submissions', requireAuth, ah(async (req, res) =>
   res.json(await db.listSubmissions({ uploadedBy: req.user.id }))));
 
+// Histórico de recusas do promotor. Vive numa coleção própria, indexada pelo usuário:
+// a submissão é anonimizada aos 2 meses, mas a justificativa continua acessível enquanto
+// a conta existir — que é a formulação que a política aceita (Art. 15).
+app.get('/api/my/retornos', requireAuth, ah(async (req, res) =>
+  res.json(await db.listRetornos(req.user.id))));
+
 // Lista PAGINADA + as contagens das sub-abas. Sem paginar, 5 mil fotos viram ~5 MB e ~5s
 // por abertura da aba — e o portão deixa passar 300 requisições ao mesmo tempo, então
 // alguns admins recarregando junto bastariam pra estourar a memória do servidor.
@@ -1026,6 +1032,68 @@ app.post('/api/admin/purge', requireAuth, requirePerm('fotos'), ah(async (req, r
   for (const s of removed) for (const img of imagensDe(s)) await store.remove(img.storedFile, img.resourceType || 'image');
   await auditar(req, { acao: db.ACOES.PURGOU_LOTE, qtd: removed.length });
   res.json({ removed: removed.length });
+}));
+
+// ---------- retenção automática (LGPD 1.5) ----------
+// Roda como setInterval no boot: o Discloud mantém o processo vivo, então não precisa de
+// cron externo. Nasce em MODO SÓ-RELATÓRIO — lista o que apagaria e não apaga nada.
+// Ligar a exclusão de verdade é decisão explícita (RETENCAO_APAGA=1), depois de uma semana
+// conferindo a lista. A 1ª exclusão real só acontece ~2 meses após as primeiras fotos.
+const RETENCAO_APAGA = process.env.RETENCAO_APAGA === '1';
+const RETENCAO_INTERVALO_MS = 24 * 60 * 60 * 1000;
+
+async function rodarRetencao({ manual = false, user = null } = {}) {
+  const inicio = Date.now();
+  const subs = await db.fotosAExpirar();
+  const resumo = {
+    modo: RETENCAO_APAGA ? 'apagando' : 'so-relatorio',
+    candidatas: subs.length,
+    imagensApagadas: 0, anonimizadas: 0, identidadesRemovidas: 0,
+    amostra: subs.slice(0, 20).map((s) => ({ id: s.id, promotor: s.promotor, cliente: s.cliente, createdAt: s.createdAt })),
+  };
+
+  if (RETENCAO_APAGA && subs.length) {
+    // ORDEM OBRIGATÓRIA: congelar ANTES de limpar. Invertido, o vínculo com o grupo e a
+    // contagem de participantes se perdem e não há como reconstruir — o nome já foi.
+    await db.congelarAgregados(subs);
+    for (const s of subs) {
+      for (const img of imagensDe(s)) {
+        await store.remove(img.storedFile, img.resourceType || 'image');
+        resumo.imagensApagadas++;
+      }
+    }
+    resumo.anonimizadas = await db.anonimizarSubmissions(subs);
+  }
+  if (RETENCAO_APAGA) resumo.identidadesRemovidas = await db.removerIdentidadeAntiga();
+
+  resumo.duracaoMs = Date.now() - inicio;
+  const linha = `[retencao] ${resumo.modo}: ${resumo.candidatas} candidata(s), ` +
+    `${resumo.imagensApagadas} imagem(ns) apagada(s), ${resumo.anonimizadas} anonimizada(s), ` +
+    `${resumo.identidadesRemovidas} identidade(s) removida(s)`;
+  console.log(linha);
+  // registra sempre — inclusive o modo relatório, pra a conferência da 1ª semana ficar gravada
+  await db.auditar({ user, acao: db.ACOES.RETENCAO, qtd: resumo.candidatas, detalhe: linha });
+  return resumo;
+}
+
+// Só agenda quando o servidor é o processo principal (nos testes o app é importado).
+if (require.main === module) {
+  setTimeout(() => {
+    rodarRetencao().catch((e) => console.error('[retencao] falhou:', e.message));
+    setInterval(() => rodarRetencao().catch((e) => console.error('[retencao] falhou:', e.message)), RETENCAO_INTERVALO_MS);
+  }, 30 * 1000); // 30s depois do boot: não disputa CPU com a subida
+}
+
+// Rodar sob demanda pra conferir a lista (checkpoint D3). Só acesso total.
+app.post('/api/admin/retencao/rodar', requireAuth, requirePerm('*'), ah(async (req, res) =>
+  res.json(await rodarRetencao({ manual: true, user: req.user }))));
+
+// Contadores do escalonamento + cadastros pendentes numa requisição só. O painel já fazia
+// polling de 10s pro badge de cadastros; somar OUTRA requisição a cada 10s bateria
+// justamente onde o gargalo já mora (Atlas M0).
+app.get('/api/admin/alertas', requireAuth, requirePerm('fotos'), ah(async (req, res) => {
+  const [alertas, cadastros] = await Promise.all([db.contarAlertas(), db.countPendingSignups()]);
+  res.json({ ...alertas, cadastrosPendentes: cadastros, retencaoDias: db.RETENCAO_IMAGEM_DIAS, apagando: RETENCAO_APAGA });
 }));
 
 app.use(express.static(path.join(__dirname, 'public')));

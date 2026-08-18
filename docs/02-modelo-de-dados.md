@@ -166,6 +166,41 @@ auditar toda requisição viraria o gargalo do Atlas M0 e afogaria o que importa
   O motivo de existir: `baixado = true` diz que a foto saiu, mas não diz **quem** a levou —
   que é exatamente a pergunta de uma auditoria.
 
+### `retorno`
+Justificativa da recusa, **separada da submissão** e indexada pelo **usuário**.
+- Campos: `submissionId`, `userId`, `semanaKey`, `mesKey`, `dataExposicao`, `cliente`,
+  `motivoRecusa`, `observacao`, `criadoEm`.
+- Existe porque **anonimizar e "mostrar o motivo para sempre" querem coisas opostas do
+  mesmo documento**: a submissão precisa perder o vínculo aos 2 meses, e o promotor precisa
+  seguir vendo por que a foto dele foi recusada. Tirando o retorno de dentro da submissão,
+  os dois prazos convivem.
+- Prazo: **enquanto a conta existir** — não é arbitrário, é o critério do Art. 15 (a
+  finalidade dura enquanto dura a relação). Some junto com o titular no fluxo do 1.6.
+- Peso: ~15 recusas/ano × 1.400 promotores ≈ 21 mil documentos de ~100 bytes = **~2 MB/ano**.
+
+### `ranking`
+Registro do pódio — **gravado no momento em que o admin marca o vencedor**, não na hora de
+apagar a foto.
+- Campos: `mesKey`, `escopo` (`NACIONAL` ou a região), `posicao`, `submissionId`,
+  `promotor`, `grupo`, `regiao`, `cliente`, `marcadoEm`. Único por `mesKey+escopo+posicao`.
+- **Ordem obrigatória:** tem que estar gravando **antes** da primeira exclusão. Invertido,
+  os vencedores passados somem e não há como reconstruir.
+- Com ele, a foto do vencedor deixa de ser exceção da retenção — a régua fica **uma só**
+  ("2 meses, sempre"), mais fácil de declarar na política e de auditar. `listRanking` marca
+  `temFoto` para a página escolher entre pódio com imagem e quadro de honra em texto.
+- ⚠️ O **nome do vencedor fica indefinidamente** e é dado pessoal, visível a todos os
+  logados. É legítimo (premiação divulgada é finalidade própria) e **está declarado na
+  política** — mas não pode ser varrido junto com a anonimização por engano.
+
+### Campos de retenção em `submissions`
+- `anonimizadaEm`: carimbo de quando o documento foi anonimizado (e `imagens` esvaziado).
+- `grupoOficial`: grupo do banco de promotores **congelado antes** de limpar `promotorNorm`.
+  Sem ele, o `$lookup` da aderência morre junto com a chave e a participação por grupo
+  **zera em silêncio** — com números que parecem reais.
+- `refdata._id: 'participantes'`: contador de **participantes distintos por mês × grupo**,
+  gravado na anonimização. Contar "quantas pessoas participaram" exige identidade, e nenhum
+  campo residual substitui isso.
+
 ## Índices (criados em `db.init()`)
 
 | Coleção | Índice | Tipo |
@@ -180,6 +215,9 @@ auditar toda requisição viraria o gargalo do Atlas M0 e afogaria o que importa
 | `submissions` | `createdAt` | descendente |
 | `auditoria` | `ts` | **TTL 12 meses** |
 | `auditoria` | `ts` desc / `userId` | consulta da tela |
+| `retorno` | `userId + criadoEm` desc | histórico do promotor |
+| `retorno` | `submissionId` | upsert na reavaliação |
+| `ranking` | `mesKey + escopo + posicao` | **único** |
 
 ## Seed inicial
 

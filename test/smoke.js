@@ -264,6 +264,34 @@ async function uploadCloud(cookie, tipo, file, filename, ct) {
   ck('excluir conta grava na auditoria', J((await req('GET', '/api/admin/auditoria?acao=excluiu_conta&limit=50', { cookie: ac })).body).itens.some((e) => e.alvo === novoAud.id));
   ck('filtro por ação devolve só aquela ação', J((await req('GET', '/api/admin/auditoria?acao=criou_conta&limit=50', { cookie: ac })).body).itens.every((e) => e.acao === 'criou_conta'));
 
+
+  // ---- LGPD 1.5: cota da recusada, alertas e retenção em modo só-relatório ----
+  // foto recusada NÃO consome cota — na prática é como se não tivesse mandado nada
+  const semanaImg = await uploadCloud(pc, 'fotos', jpeg, 'cota1.jpg', 'image/jpeg');
+  const env1 = await req('POST', '/api/submissions', { cookie: pc, body: { cliente: 'COTA A', endereco: 'X', dataExposicao: '2026-05-04', regiao: 'NE', grupo: '', promotor: ref.promotores[3], fotos: [semanaImg] } });
+  ck('1ª foto da semana entra', env1.status === 200, J(env1.body).error || '');
+  const bloq = await req('POST', '/api/submissions', { cookie: pc, body: { cliente: 'COTA B', endereco: 'X', dataExposicao: '2026-05-05', regiao: 'NE', grupo: '', promotor: ref.promotores[3], fotos: [await uploadCloud(pc, 'fotos', jpeg, 'cota2.jpg', 'image/jpeg')] } });
+  ck('2ª na mesma semana é barrada', bloq.status === 400 && /semana/i.test(J(bloq.body).error));
+  const idCota = J((await req('GET', '/api/admin/submissions?q=' + encodeURIComponent('COTA A'), { cookie: ac })).body).itens[0].id;
+  await req('PATCH', '/api/admin/submissions/' + idCota, { cookie: ac, body: { validado: false, motivoRecusa: 'Foto fora de foco' } });
+  const reenvio = await req('POST', '/api/submissions', { cookie: pc, body: { cliente: 'COTA C', endereco: 'X', dataExposicao: '2026-05-06', regiao: 'NE', grupo: '', promotor: ref.promotores[3], fotos: [await uploadCloud(pc, 'fotos', jpeg, 'cota3.jpg', 'image/jpeg')] } });
+  ck('recusar devolve a vaga na hora (recusada não consome cota)', reenvio.status === 200, J(reenvio.body).error || '');
+  // o retorno da recusa fica numa coleção própria, que sobrevive à anonimização da foto
+  ck('promotor lê o retorno da recusa', J((await req('GET', '/api/my/retornos', { cookie: pc })).body).some((r) => r.motivoRecusa === 'Foto fora de foco'));
+
+  // alertas: uma requisição só, com os cadastros pendentes junto (não somar polling no M0)
+  const al = J((await req('GET', '/api/admin/alertas', { cookie: ac })).body);
+  ck('/api/admin/alertas traz as duas listas + cadastros numa requisição',
+    typeof al.naoAvaliadas === 'number' && typeof al.naoBaixadas === 'number' && typeof al.cadastrosPendentes === 'number', al.error || '');
+  ck('alertas trazem os degraus 30/45/53', al.dias.destaque === 30 && al.dias.critico === 45 && al.dias.ultima === 53);
+  ck('promotor não lê alertas (403)', (await req('GET', '/api/admin/alertas', { cookie: pc })).status === 403);
+
+  // retenção sob demanda: nasce em modo só-relatório e NÃO apaga nada
+  const ret = J((await req('POST', '/api/admin/retencao/rodar', { cookie: ac })).body);
+  ck('retenção roda em modo só-relatório por padrão', ret.modo === 'so-relatorio', 'modo=' + ret.modo);
+  ck('modo só-relatório não apaga nada', ret.imagensApagadas === 0 && ret.anonimizadas === 0);
+  ck('retenção fica registrada na auditoria', J((await req('GET', '/api/admin/auditoria?acao=retencao_automatica', { cookie: ac })).body).total >= 1);
+
   // ---- recuperação de senha (link de redefinição) ----
   const fp = J((await req('POST', '/api/forgot-password', { body: { email: 'joao@local' } })).body);
   ck('forgot-password responde genérico + devLink', fp.ok === true && !!fp.devLink, fp.devLink && fp.devLink.slice(0, 40));
