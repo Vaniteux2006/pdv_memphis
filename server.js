@@ -76,8 +76,29 @@ app.use('/api', (req, res, next) => {
 
 app.use(compression()); // gzip: o JSON da referência (2 mil promotores) cai de ~60KB pra ~10KB
 app.use(express.json({ limit: '1mb' }));
-app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+// Sem express.urlencoded de propósito: todo o front envia JSON via fetch, e
+// application/x-www-form-urlencoded é o Content-Type que o navegador deixa passar SEM
+// preflight CORS — ou seja, é exatamente o que um <form> de outro site usaria pra
+// disparar uma ação aqui. Não parsear esse corpo fecha o vetor na raiz.
 app.use(cookieParser());
+
+// ---- anti-CSRF: confere a origem de tudo que muda estado ----
+// O cookie é SameSite=Lax, o que já barra POST vindo de outro site — MAS "site" é o
+// domínio registrável, e `discloud.app` não está na Public Suffix List. Resultado: um
+// `qualquer-coisa.discloud.app` conta como MESMO site que o nosso e o cookie viaja junto.
+// Como qualquer pessoa publica um app no Discloud, isso bastaria pra forjar ações em nome
+// de um admin logado. Conferir a origem não depende de PSL nem de SameSite.
+// Origin ausente = cliente que não é navegador (curl, teste, script): navegador SEMPRE
+// manda Origin em requisição de outra origem, então deixar passar não abre a porta.
+const MUTA = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+app.use('/api', (req, res, next) => {
+  if (!MUTA.has(req.method)) return next();
+  const origem = req.headers.origin || (req.headers.referer ? new URL(req.headers.referer).origin : null);
+  if (!origem) return next();
+  const proto = req.headers['x-forwarded-proto'] || req.protocol;
+  if (origem === `${proto}://${req.headers.host}`) return next();
+  return res.status(403).json({ error: 'Origem não permitida.' });
+});
 
 // anti-força-bruta: limita tentativas de login por IP
 const loginLimiter = rateLimit({
@@ -92,6 +113,15 @@ const resetLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, max: 20,
   standardHeaders: true, legacyHeaders: false,
   message: { error: 'Muitas solicitações. Tente de novo em alguns minutos.' },
+});
+// validação do crachá: ele concede ACESSO TOTAL, então não pode aceitar tentativa infinita.
+// O código tem 128 bits, o que já torna a adivinhação inviável — isto é a segunda tranca,
+// e serve também pra não deixar ninguém martelar o endpoint sem aparecer no rate-limit.
+const crachaLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, max: 10,
+  skipSuccessfulRequests: true,
+  standardHeaders: true, legacyHeaders: false,
+  message: { error: 'Muitas tentativas de crachá. Tente de novo em alguns minutos.' },
 });
 // cadastro público (sign up): evita criação de conta em massa por IP
 const signupLimiter = rateLimit({
@@ -564,7 +594,7 @@ app.patch('/api/admin/users/:id/permissions', requireAuth, requirePerm('*'), ah(
 // crachá de acesso total: gerar (só acesso total) e validar (qualquer admin)
 app.post('/api/admin/cracha', requireAuth, requirePerm('*'), ah(async (req, res) =>
   res.json({ codigo: await db.gerarCracha() })));
-app.post('/api/cracha/validar', requireAuth, ah(async (req, res) => {
+app.post('/api/cracha/validar', crachaLimiter, requireAuth, ah(async (req, res) => {
   try { await db.validarCracha(req.user.id, req.body.codigo); res.json({ ok: true }); }
   catch (e) { res.status(400).json({ error: e.message }); }
 }));

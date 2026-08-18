@@ -65,12 +65,39 @@ flowchart TD
   de usuário foram trocados por **`data-*` + event listeners** — dado de promotor/cliente
   não vira mais código.
 
+### Anti-CSRF (revisão ago/2026)
+- **Checagem de origem** em todo `POST/PUT/PATCH/DELETE` de `/api`: `Origin` (ou o
+  `Referer`) precisa bater com o host da requisição, senão **403**. Requisição sem
+  `Origin` passa — é cliente que não é navegador (curl, teste, script), e navegador
+  **sempre** manda `Origin` quando a requisição vem de outra origem.
+- **O parser `express.urlencoded` foi removido.** Só JSON é aceito. `application/
+  x-www-form-urlencoded` é o único `Content-Type` que o navegador deixa passar **sem
+  preflight CORS** — ou seja, é exatamente o que um `<form>` hospedado em outro site
+  usaria. Nada no front usa form nativo, então não se perde nada.
+- ⚠️ **Por que o `SameSite=Lax` não bastava:** "site", para o cookie, é o **domínio
+  registrável**, e `discloud.app` **não está na Public Suffix List** (conferido contra a
+  lista oficial). Logo `qualquer-app.discloud.app` conta como **mesmo site** que o nosso e
+  o cookie viaja junto. Como qualquer pessoa publica um app no Discloud de graça, isso
+  bastaria para forjar ações em nome de um admin logado. A checagem de origem não depende
+  de PSL nem de `SameSite`, então resolve independentemente do host.
+
+### Injeção de operador NoSQL
+- `queryDeSubmissions` recebe `req.query` cru. O parser do Express transforma
+  `?regiao[$ne]=X` num **objeto**, que iria direto para o Mongo como operador.
+  Os quatro campos que entravam sem tratamento (`uploadedBy`, `regiao`, `grupo`,
+  `preAvaliacao`) agora passam por `String()`.
+- Não houve escalada de privilégio: a única rota que espalha `req.query` exige permissão
+  `fotos`, e quem a tem já enxerga todas as fotos. `/api/my/submissions` **não** espalha
+  `req.query` — monta o filtro só com `uploadedBy` da sessão. A correção é para não virar
+  vazamento no dia em que alguém criar uma rota de escopo menor.
+
 ### Disponibilidade (anti-rajada)
 - **Portão de concorrência**: máx. 300 requisições de API simultâneas + fila leve de
   8.000; acima disso, **503** imediato — protege a RAM em picos (validado com 5.000
   usuários simultâneos em `test/carga.js`).
-- **Rate-limit**: login 10 falhas/15min por IP (sucesso não conta) e recuperação de
-  senha 20/15min → **429**.
+- **Rate-limit**: login 10 falhas/15min por IP (sucesso não conta), recuperação de
+  senha 20/15min, cadastro público 20/h e **validação de crachá 10 falhas/15min**
+  (ele concede acesso total) → **429**.
 
 ### Segredos
 - Tudo em `.env` (no `.gitignore`): `MONGODB_URI`, `CLOUDINARY_*`, `SESSION_SECRET`, `SMTP_*`.
@@ -78,7 +105,7 @@ flowchart TD
 
 ## Pentest (autorizado)
 
-`test/pentest.js` ataca o próprio app (40 verificações). Resultado atual: **40 defesas OK, 0 achados.**
+`test/pentest.js` ataca o próprio app (45 verificações). Resultado atual: **45 defesas OK, 0 achados.**
 Cobre: exposição de arquivos sensíveis, travessia de diretório, acesso sem auth, **injeção
 NoSQL** no login, **forja/adulteração de JWT**, **escalonamento de privilégio**, **mass
 assignment**, **IDOR** (foto de outro promotor), abuso do upload assinado, **ReDoS/regex**
@@ -114,6 +141,9 @@ node test/pentest.js
 | **Rotacionar segredos expostos** | ⬜ | Senha do Mongo e secret do Cloudinary passaram por chat — trocar antes do go-live. |
 | **Admin padrão sem senha fixa** | ✅ | Seed lê `ADMIN_EMAIL`/`ADMIN_SENHA`; sem env, senha sorteada + troca obrigatória. Falta só trocar a senha da instalação atual pelo painel (mãos do dono). |
 | **Boot aborta sem `SESSION_SECRET`** | ✅ | Em produção, segredo de dev no lugar do real = `throw` no boot (antes caía em fallback público e qualquer um forjava cookie de admin). |
+| **CSRF (checagem de origem)** | ✅ | Revisão ago/2026. `Origin`/`Referer` conferidos em tudo que muda estado; `express.urlencoded` removido. **`SameSite=Lax` não bastava:** `discloud.app` não está na Public Suffix List, então outro app `*.discloud.app` conta como mesmo site. |
+| **Injeção de operador NoSQL no filtro** | ✅ | `queryDeSubmissions` coage `uploadedBy/regiao/grupo/preAvaliacao` com `String()`. Sem escalada antes (rota exige `fotos`), mas era vazamento à espera de uma rota nova. |
+| **Rate limit na validação do crachá** | ✅ | 10 falhas/15min. O código tem 128 bits (adivinhar já era inviável) — é a segunda tranca. |
 | Validação por schema (zod) | ⬜ | Reforço opcional de tipos/limites. |
 | Backup + auditoria | ⬜ | Snapshot do Mongo + log de ações sensíveis. |
 
