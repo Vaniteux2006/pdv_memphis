@@ -633,6 +633,39 @@ app.post('/api/admin/users/:id/active', requireAuth, requirePerm('contas'), ah(a
   }
   catch (e) { res.status(400).json({ error: e.message }); }
 }));
+// ---------- direitos do titular (LGPD 1.6, Art. 18) ----------
+// Exportar: JSON com cadastro, submissões, retornos e pódios da pessoa.
+app.get('/api/admin/users/:id/dados', requireAuth, requirePerm('contas'), ah(async (req, res) => {
+  try {
+    const dados = await db.exportarTitular(req.params.id);
+    await auditar(req, { acao: db.ACOES.EXPORTOU_TITULAR, alvo: req.params.id, qtd: dados.submissoes.length });
+    res.setHeader('Content-Disposition', `attachment; filename="dados-titular-${req.params.id}.json"`);
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.end(JSON.stringify(dados, null, 2));
+  } catch (e) { res.status(400).json({ error: e.message }); }
+}));
+
+// Anonimizar é o caminho padrão: some a pessoa, ficam os números da campanha.
+// `?completo=1` apaga tudo — só faz sentido com a campanha paga e encerrada, e por isso
+// exige ACESSO TOTAL, não a permissão `contas`.
+app.post('/api/admin/users/:id/anonimizar', requireAuth, requirePerm('contas'), ah(async (req, res) => {
+  try {
+    const completo = req.query.completo === '1' || req.body?.completo === true;
+    if (completo && !db.temPerm(req.user, '*'))
+      return res.status(403).json({ error: 'Exclusão completa exige acesso total (crachá)' });
+    if (completo) {
+      const subs = await db.excluirTitularCompleto(req.params.id);
+      for (const s of subs) for (const img of imagensDe(s)) await store.remove(img.storedFile, img.resourceType || 'image');
+      await auditar(req, { acao: db.ACOES.EXCLUIU_TITULAR, alvo: req.params.id, qtd: subs.length });
+      return res.json({ ok: true, modo: 'completo', submissoes: subs.length });
+    }
+    const r = await db.anonimizarTitular(req.params.id, { motivo: String(req.body?.motivo || 'pedido do titular') });
+    await auditar(req, { acao: db.ACOES.ANONIMIZOU_TITULAR, alvo: req.params.id, qtd: r.submissoes,
+      detalhe: `${r.submissoes} submissão(ões), ${r.retornos} retorno(s)` });
+    res.json({ ok: true, modo: 'anonimizado', ...r });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+}));
+
 app.delete('/api/admin/users/:id', requireAuth, requirePerm('contas'), ah(async (req, res) => {
   try {
     await db.deleteUser(req.params.id);

@@ -292,6 +292,45 @@ async function uploadCloud(cookie, tipo, file, filename, ct) {
   ck('modo só-relatório não apaga nada', ret.imagensApagadas === 0 && ret.anonimizadas === 0);
   ck('retenção fica registrada na auditoria', J((await req('GET', '/api/admin/auditoria?acao=retencao_automatica', { cookie: ac })).body).total >= 1);
 
+
+  // ---- LGPD 1.6: direitos do titular (Art. 18) ----
+  // uma conta com foto + recusa (pra ter o que exportar e o que anonimizar)
+  const emailTit = 'titular_' + Date.now() + '@local';
+  const tit = J((await req('POST', '/api/admin/users', { cookie: ac, body: { name: 'TITULAR TESTE', email: emailTit, password: 'titular123', grupo: 'G-TIT', regiao: 'NE' } })).body);
+  const tc = (await req('POST', '/api/login', { body: { email: emailTit, password: 'titular123' } })).cookie;
+  await req('POST', '/api/submissions', { cookie: tc, body: { cliente: 'LOJA TITULAR', endereco: 'Rua Sigilo, 9', dataExposicao: '2026-04-06', regiao: 'NE', grupo: 'G-TIT', promotor: ref.promotores[5], fotos: [await uploadCloud(tc, 'fotos', jpeg, 'tit.jpg', 'image/jpeg')] } });
+  const subTit = J((await req('GET', '/api/my/submissions', { cookie: tc })).body)[0];
+  await req('PATCH', '/api/admin/submissions/' + subTit.id, { cookie: ac, body: { validado: false, motivoRecusa: 'Produto errado' } });
+
+  // exportar
+  const exp = await req('GET', '/api/admin/users/' + tit.id + '/dados', { cookie: ac });
+  const dados = J(exp.body);
+  ck('exporta os dados do titular em JSON', exp.status === 200 && !!dados.cadastro && Array.isArray(dados.submissoes), dados.error || '');
+  ck('exportação traz submissões e retornos da pessoa', dados.submissoes.length === 1 && dados.retornos.length === 1);
+  ck('exportação NÃO vaza o hash da senha', !dados.cadastro.passwordHash && !dados.cadastro.resetTokenHash);
+  ck('exportar fica registrado na auditoria', J((await req('GET', '/api/admin/auditoria?acao=exportou_dados_titular', { cookie: ac })).body).total >= 1);
+
+  // anonimizar (padrão: preserva os números)
+  const anon = await req('POST', '/api/admin/users/' + tit.id + '/anonimizar', { cookie: ac, body: { motivo: 'pedido do titular' } });
+  ck('anonimiza o titular preservando os números', anon.status === 200 && J(anon.body).modo === 'anonimizado', J(anon.body).error || '');
+  // busca por texto não acha mais: a anonimização remove o searchBlob (que concatenava
+  // nome + endereço). É o comportamento correto — por isso a foto é buscada pelo id.
+  ck('anonimizada some da busca por texto (searchBlob foi limpo)',
+    J((await req('GET', '/api/admin/submissions?q=' + encodeURIComponent('LOJA TITULAR'), { cookie: ac })).body).itens.length === 0);
+  const subDepois = J((await req('GET', '/api/admin/submissions?limit=200', { cookie: ac })).body).itens.find((x) => x.id === subTit.id);
+  ck('a foto continua existindo (alimenta os gráficos)', !!subDepois);
+  ck('nome vira [removido] e endereço some', subDepois.promotor === '[removido]' && !subDepois.endereco);
+  ck('o vínculo uploadedBy foi cortado', !subDepois.uploadedBy);
+  // CASO OBRIGATÓRIO 6: o retorno some junto, senão sobra dado pessoal órfão
+  ck('excluir/anonimizar titular apaga os retornos dele junto', J((await req('GET', '/api/my/retornos', { cookie: tc })).body).length === 0);
+  ck('anonimização fica registrada na auditoria', J((await req('GET', '/api/admin/auditoria?acao=anonimizou_titular', { cookie: ac })).body).total >= 1);
+  // exclusão completa exige acesso total
+  const admLim = 'limitado_' + Date.now() + '@local';
+  await req('POST', '/api/admin/users', { cookie: ac, body: { name: 'Só Contas', email: admLim, password: 'contas123', role: 'admin', permissions: ['contas'] } });
+  const clc = (await req('POST', '/api/login', { body: { email: admLim, password: 'contas123' } })).cookie;
+  ck('exclusão completa exige acesso total (403 sem crachá)',
+    (await req('POST', '/api/admin/users/' + tit.id + '/anonimizar?completo=1', { cookie: clc })).status === 403);
+
   // ---- recuperação de senha (link de redefinição) ----
   const fp = J((await req('POST', '/api/forgot-password', { body: { email: 'joao@local' } })).body);
   ck('forgot-password responde genérico + devLink', fp.ok === true && !!fp.devLink, fp.devLink && fp.devLink.slice(0, 40));
