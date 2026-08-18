@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  06 — Direitos do titular (Art. 18 — processo ALVO, plano LGPD 1.6)
+  Artefato NORMATIVO (BPMN 2.0). É o processo que uma auditoria pede primeiro:
+  solicitação → confirmação de identidade → exportar OU anonimizar → auditoria → resposta.
+-->
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  id="Defs_DireitosTitular"
+                  targetNamespace="http://memphis-pdv/bpmn/06-direitos-do-titular"
+                  exporter="Memphis PDV (plano LGPD)" exporterVersion="1.0">
+
+  <bpmn:collaboration id="Colab_Titular">
+    <bpmn:participant id="Part_Titular" name="Titular (promotor)" processRef="Process_Titular" />
+    <bpmn:participant id="Part_EquipeTit" name="Encarregado + Equipe (permissão contas)" processRef="Process_EquipeTit" />
+    <bpmn:messageFlow id="MF_Pedido" name="pedido (canal do encarregado)" sourceRef="Task_EscreveCanal" targetRef="Start_PedidoRecebido" />
+    <bpmn:messageFlow id="MF_Resposta" name="resposta (até 15 dias, Art. 19)" sourceRef="Task_Responde" targetRef="Catch_Resposta" />
+  </bpmn:collaboration>
+
+  <bpmn:process id="Process_Titular" isExecutable="false">
+    <bpmn:startEvent id="Start_QuerDireito" name="Quer exercer um direito (acesso, correção, exclusão)">
+      <bpmn:outgoing>D01</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:userTask id="Task_EscreveCanal" name="Escreve pro canal do encarregado (contato da política)">
+      <bpmn:incoming>D01</bpmn:incoming>
+      <bpmn:outgoing>D02</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:intermediateCatchEvent id="Catch_Resposta" name="Resposta recebida">
+      <bpmn:incoming>D02</bpmn:incoming>
+      <bpmn:outgoing>D03</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="MED_Resposta" />
+    </bpmn:intermediateCatchEvent>
+    <bpmn:endEvent id="End_DireitoAtendido" name="Direito atendido">
+      <bpmn:incoming>D03</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="D01" sourceRef="Start_QuerDireito" targetRef="Task_EscreveCanal" />
+    <bpmn:sequenceFlow id="D02" sourceRef="Task_EscreveCanal" targetRef="Catch_Resposta" />
+    <bpmn:sequenceFlow id="D03" sourceRef="Catch_Resposta" targetRef="End_DireitoAtendido" />
+  </bpmn:process>
+
+  <bpmn:process id="Process_EquipeTit" isExecutable="false">
+    <bpmn:startEvent id="Start_PedidoRecebido" name="Pedido do titular recebido">
+      <bpmn:outgoing>G01</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="MED_Pedido" />
+    </bpmn:startEvent>
+    <bpmn:userTask id="Task_ConfirmaIdentidade" name="Confirma a identidade do titular (nunca entregar dado a terceiro)">
+      <bpmn:incoming>G01</bpmn:incoming>
+      <bpmn:outgoing>G02</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:exclusiveGateway id="GW_QualPedido" name="Qual o pedido?">
+      <bpmn:incoming>G02</bpmn:incoming>
+      <bpmn:outgoing>G03</bpmn:outgoing>
+      <bpmn:outgoing>G04</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:userTask id="Task_Exporta" name="Exporta os dados (JSON: cadastro + submissões + retornos)">
+      <bpmn:incoming>G03</bpmn:incoming>
+      <bpmn:outgoing>G05</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="Task_AnonimizaConta" name="Anonimiza a conta: nome/e-mail viram [removido], uploadedBy limpo, retornos apagados junto">
+      <bpmn:incoming>G04</bpmn:incoming>
+      <bpmn:outgoing>G06</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:exclusiveGateway id="GW_JuntaTit" name="">
+      <bpmn:incoming>G05</bpmn:incoming>
+      <bpmn:incoming>G06</bpmn:incoming>
+      <bpmn:outgoing>G07</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="Task_AuditoriaTit" name="Registra na auditoria (quem, quando, o quê)">
+      <bpmn:incoming>G07</bpmn:incoming>
+      <bpmn:outgoing>G08</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:userTask id="Task_Responde" name="Responde ao titular no prazo">
+      <bpmn:incoming>G08</bpmn:incoming>
+      <bpmn:outgoing>G09</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id="End_PedidoAtendido" name="Pedido atendido e rastreável">
+      <bpmn:incoming>G09</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="G01" sourceRef="Start_PedidoRecebido" targetRef="Task_ConfirmaIdentidade" />
+    <bpmn:sequenceFlow id="G02" sourceRef="Task_ConfirmaIdentidade" targetRef="GW_QualPedido" />
+    <bpmn:sequenceFlow id="G03" name="acesso / portabilidade" sourceRef="GW_QualPedido" targetRef="Task_Exporta" />
+    <bpmn:sequenceFlow id="G04" name="exclusão / anonimização" sourceRef="GW_QualPedido" targetRef="Task_AnonimizaConta" />
+    <bpmn:sequenceFlow id="G05" sourceRef="Task_Exporta" targetRef="GW_JuntaTit" />
+    <bpmn:sequenceFlow id="G06" sourceRef="Task_AnonimizaConta" targetRef="GW_JuntaTit" />
+    <bpmn:sequenceFlow id="G07" sourceRef="GW_JuntaTit" targetRef="Task_AuditoriaTit" />
+    <bpmn:sequenceFlow id="G08" sourceRef="Task_AuditoriaTit" targetRef="Task_Responde" />
+    <bpmn:sequenceFlow id="G09" sourceRef="Task_Responde" targetRef="End_PedidoAtendido" />
+
+    <bpmn:textAnnotation id="TA_ExclusaoTotal">
+      <bpmn:text>Anonimizar preserva os gráficos. Exclusão COMPLETA só se a campanha já foi paga e encerrada.</bpmn:text>
+    </bpmn:textAnnotation>
+    <bpmn:association id="Assoc_ExclusaoTotal" associationDirection="None" sourceRef="Task_AnonimizaConta" targetRef="TA_ExclusaoTotal" />
+  </bpmn:process>
+
+  <bpmndi:BPMNDiagram id="Diagrama_06">
+    <bpmndi:BPMNPlane id="Plano_06" bpmnElement="Colab_Titular">
+      <bpmndi:BPMNShape id="Part_Titular_di" bpmnElement="Part_Titular" isHorizontal="true">
+        <dc:Bounds x="160" y="80" width="1300" height="260" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Part_EquipeTit_di" bpmnElement="Part_EquipeTit" isHorizontal="true">
+        <dc:Bounds x="160" y="400" width="1300" height="420" />
+      </bpmndi:BPMNShape>
+
+      <!-- titular -->
+      <bpmndi:BPMNShape id="Start_QuerDireito_di" bpmnElement="Start_QuerDireito">
+        <dc:Bounds x="232" y="182" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="190" y="225" width="120" height="40" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_EscreveCanal_di" bpmnElement="Task_EscreveCanal">
+        <dc:Bounds x="330" y="160" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Catch_Resposta_di" bpmnElement="Catch_Resposta">
+        <dc:Bounds x="542" y="182" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="515" y="225" width="94" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_DireitoAtendido_di" bpmnElement="End_DireitoAtendido">
+        <dc:Bounds x="650" y="182" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="625" y="225" width="88" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="D01_di" bpmnElement="D01"><di:waypoint x="268" y="200" /><di:waypoint x="330" y="200" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="D02_di" bpmnElement="D02"><di:waypoint x="430" y="200" /><di:waypoint x="542" y="200" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="D03_di" bpmnElement="D03"><di:waypoint x="578" y="200" /><di:waypoint x="650" y="200" /></bpmndi:BPMNEdge>
+
+      <!-- equipe -->
+      <bpmndi:BPMNShape id="Start_PedidoRecebido_di" bpmnElement="Start_PedidoRecebido">
+        <dc:Bounds x="282" y="542" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="252" y="585" width="96" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_ConfirmaIdentidade_di" bpmnElement="Task_ConfirmaIdentidade">
+        <dc:Bounds x="380" y="520" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="GW_QualPedido_di" bpmnElement="GW_QualPedido" isMarkerVisible="true">
+        <dc:Bounds x="530" y="535" width="50" height="50" />
+        <bpmndi:BPMNLabel><dc:Bounds x="518" y="508" width="76" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Exporta_di" bpmnElement="Task_Exporta">
+        <dc:Bounds x="650" y="440" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_AnonimizaConta_di" bpmnElement="Task_AnonimizaConta">
+        <dc:Bounds x="650" y="620" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="GW_JuntaTit_di" bpmnElement="GW_JuntaTit" isMarkerVisible="true">
+        <dc:Bounds x="820" y="535" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_AuditoriaTit_di" bpmnElement="Task_AuditoriaTit">
+        <dc:Bounds x="920" y="520" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Responde_di" bpmnElement="Task_Responde">
+        <dc:Bounds x="1070" y="520" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_PedidoAtendido_di" bpmnElement="End_PedidoAtendido">
+        <dc:Bounds x="1232" y="542" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1195" y="585" width="110" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="TA_ExclusaoTotal_di" bpmnElement="TA_ExclusaoTotal">
+        <dc:Bounds x="830" y="660" width="250" height="54" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNEdge id="G01_di" bpmnElement="G01"><di:waypoint x="318" y="560" /><di:waypoint x="380" y="560" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="G02_di" bpmnElement="G02"><di:waypoint x="480" y="560" /><di:waypoint x="530" y="560" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="G03_di" bpmnElement="G03">
+        <di:waypoint x="555" y="535" /><di:waypoint x="555" y="480" /><di:waypoint x="650" y="480" />
+        <bpmndi:BPMNLabel><dc:Bounds x="500" y="445" width="140" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="G04_di" bpmnElement="G04">
+        <di:waypoint x="555" y="585" /><di:waypoint x="555" y="660" /><di:waypoint x="650" y="660" />
+        <bpmndi:BPMNLabel><dc:Bounds x="480" y="666" width="160" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="G05_di" bpmnElement="G05">
+        <di:waypoint x="750" y="480" /><di:waypoint x="845" y="480" /><di:waypoint x="845" y="535" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="G06_di" bpmnElement="G06">
+        <di:waypoint x="750" y="660" /><di:waypoint x="845" y="660" /><di:waypoint x="845" y="585" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="G07_di" bpmnElement="G07"><di:waypoint x="870" y="560" /><di:waypoint x="920" y="560" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="G08_di" bpmnElement="G08"><di:waypoint x="1020" y="560" /><di:waypoint x="1070" y="560" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="G09_di" bpmnElement="G09"><di:waypoint x="1170" y="560" /><di:waypoint x="1232" y="560" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Assoc_ExclusaoTotal_di" bpmnElement="Assoc_ExclusaoTotal">
+        <di:waypoint x="750" y="690" /><di:waypoint x="830" y="687" />
+      </bpmndi:BPMNEdge>
+
+      <!-- mensagens -->
+      <bpmndi:BPMNEdge id="MF_Pedido_di" bpmnElement="MF_Pedido">
+        <di:waypoint x="380" y="240" /><di:waypoint x="380" y="370" /><di:waypoint x="300" y="370" /><di:waypoint x="300" y="542" />
+        <bpmndi:BPMNLabel><dc:Bounds x="310" y="352" width="180" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="MF_Resposta_di" bpmnElement="MF_Resposta">
+        <di:waypoint x="1120" y="520" /><di:waypoint x="1120" y="370" /><di:waypoint x="560" y="370" /><di:waypoint x="560" y="218" />
+        <bpmndi:BPMNLabel><dc:Bounds x="700" y="352" width="180" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

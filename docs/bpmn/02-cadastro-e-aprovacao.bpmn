@@ -1,0 +1,263 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  02 — Cadastro público e aprovação (sign up + fila de pendentes)
+  Artefato NORMATIVO (BPMN 2.0). Duas filas distintas na Equipe: cadastros de conta
+  aguardando ativação (permissão contas) e nomes/grupos novos vindos do envio de foto
+  (permissão aprovar). O envio que gera pendente está no processo 01.
+-->
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  id="Defs_CadastroAprovacao"
+                  targetNamespace="http://memphis-pdv/bpmn/02-cadastro-e-aprovacao"
+                  exporter="Memphis PDV (plano LGPD)" exporterVersion="1.0">
+
+  <bpmn:collaboration id="Colab_Cadastro">
+    <bpmn:participant id="Part_Candidato" name="Promotor (candidato)" processRef="Process_Candidato" />
+    <bpmn:participant id="Part_Equipe" name="Equipe (admin — permissões contas / aprovar)" processRef="Process_EquipeCad" />
+    <bpmn:messageFlow id="MF_NovoCadastro" name="cadastro pendente" sourceRef="Task_EnviaCadastro" targetRef="Start_CadNaFila" />
+    <bpmn:messageFlow id="MF_ContaAtivada" name="conta ativada" sourceRef="Task_AtivaConta" targetRef="Catch_Ativada" />
+  </bpmn:collaboration>
+
+  <bpmn:process id="Process_Candidato" isExecutable="false">
+    <bpmn:startEvent id="Start_QuerParticipar" name="Quer participar da campanha">
+      <bpmn:outgoing>C01</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:userTask id="Task_PreencheCadastro" name="Abre o cadastro público e preenche os dados">
+      <bpmn:incoming>C01</bpmn:incoming>
+      <bpmn:outgoing>C02</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="Task_EnviaCadastro" name="Envia o cadastro (conta nasce pendente)">
+      <bpmn:incoming>C02</bpmn:incoming>
+      <bpmn:outgoing>C03</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:intermediateCatchEvent id="Catch_Ativada" name="Conta ativada">
+      <bpmn:incoming>C03</bpmn:incoming>
+      <bpmn:outgoing>C04</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="MED_Ativada" />
+    </bpmn:intermediateCatchEvent>
+    <bpmn:userTask id="Task_PrimeiroLogin" name="Loga no app (primeiro acesso)">
+      <bpmn:incoming>C04</bpmn:incoming>
+      <bpmn:outgoing>C05</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id="End_Participando" name="Participando">
+      <bpmn:incoming>C05</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="C01" sourceRef="Start_QuerParticipar" targetRef="Task_PreencheCadastro" />
+    <bpmn:sequenceFlow id="C02" sourceRef="Task_PreencheCadastro" targetRef="Task_EnviaCadastro" />
+    <bpmn:sequenceFlow id="C03" sourceRef="Task_EnviaCadastro" targetRef="Catch_Ativada" />
+    <bpmn:sequenceFlow id="C04" sourceRef="Catch_Ativada" targetRef="Task_PrimeiroLogin" />
+    <bpmn:sequenceFlow id="C05" sourceRef="Task_PrimeiroLogin" targetRef="End_Participando" />
+  </bpmn:process>
+
+  <bpmn:process id="Process_EquipeCad" isExecutable="false">
+    <!-- fila 1: cadastros de conta -->
+    <bpmn:startEvent id="Start_CadNaFila" name="Cadastro novo na fila">
+      <bpmn:outgoing>A01</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="MED_CadNaFila" />
+    </bpmn:startEvent>
+    <bpmn:userTask id="Task_RevisaCadastro" name="Revisa o cadastro (badge de pendentes)">
+      <bpmn:incoming>A01</bpmn:incoming>
+      <bpmn:outgoing>A02</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:exclusiveGateway id="GW_AprovarConta" name="Aprovar?">
+      <bpmn:incoming>A02</bpmn:incoming>
+      <bpmn:outgoing>A03</bpmn:outgoing>
+      <bpmn:outgoing>A05</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:userTask id="Task_AtivaConta" name="Ativa a conta">
+      <bpmn:incoming>A03</bpmn:incoming>
+      <bpmn:outgoing>A04</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id="End_ContaAtiva" name="Conta ativa">
+      <bpmn:incoming>A04</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:userTask id="Task_ExcluiCadastro" name="Exclui o cadastro">
+      <bpmn:incoming>A05</bpmn:incoming>
+      <bpmn:outgoing>A06</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id="End_CadRecusado" name="Cadastro recusado">
+      <bpmn:incoming>A06</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="A01" sourceRef="Start_CadNaFila" targetRef="Task_RevisaCadastro" />
+    <bpmn:sequenceFlow id="A02" sourceRef="Task_RevisaCadastro" targetRef="GW_AprovarConta" />
+    <bpmn:sequenceFlow id="A03" name="Sim" sourceRef="GW_AprovarConta" targetRef="Task_AtivaConta" />
+    <bpmn:sequenceFlow id="A04" sourceRef="Task_AtivaConta" targetRef="End_ContaAtiva" />
+    <bpmn:sequenceFlow id="A05" name="Não" sourceRef="GW_AprovarConta" targetRef="Task_ExcluiCadastro" />
+    <bpmn:sequenceFlow id="A06" sourceRef="Task_ExcluiCadastro" targetRef="End_CadRecusado" />
+
+    <!-- fila 2: nome de promotor / grupo novos (nasce no processo 01) -->
+    <bpmn:startEvent id="Start_PendNaFila" name="Nome ou grupo novo na fila (veio do envio de foto)">
+      <bpmn:outgoing>B01</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="MED_PendNaFila" />
+    </bpmn:startEvent>
+    <bpmn:userTask id="Task_RevisaPendente" name="Revisa o pendente (tipo: promotor | grupo)">
+      <bpmn:incoming>B01</bpmn:incoming>
+      <bpmn:outgoing>B02</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:exclusiveGateway id="GW_AprovarPend" name="Aprovar?">
+      <bpmn:incoming>B02</bpmn:incoming>
+      <bpmn:outgoing>B03</bpmn:outgoing>
+      <bpmn:outgoing>B05</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:userTask id="Task_EntraNoBanco" name="Entra no banco oficial (promotores / refdata.grupos)">
+      <bpmn:incoming>B03</bpmn:incoming>
+      <bpmn:outgoing>B04</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id="End_NoBanco" name="No banco oficial">
+      <bpmn:incoming>B04</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:userTask id="Task_RemoveDaFila" name="Remove da fila">
+      <bpmn:incoming>B05</bpmn:incoming>
+      <bpmn:outgoing>B06</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id="End_PendRecusado" name="Pendente recusado">
+      <bpmn:incoming>B06</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="B01" sourceRef="Start_PendNaFila" targetRef="Task_RevisaPendente" />
+    <bpmn:sequenceFlow id="B02" sourceRef="Task_RevisaPendente" targetRef="GW_AprovarPend" />
+    <bpmn:sequenceFlow id="B03" name="Sim" sourceRef="GW_AprovarPend" targetRef="Task_EntraNoBanco" />
+    <bpmn:sequenceFlow id="B04" sourceRef="Task_EntraNoBanco" targetRef="End_NoBanco" />
+    <bpmn:sequenceFlow id="B05" name="Não" sourceRef="GW_AprovarPend" targetRef="Task_RemoveDaFila" />
+    <bpmn:sequenceFlow id="B06" sourceRef="Task_RemoveDaFila" targetRef="End_PendRecusado" />
+
+    <bpmn:textAnnotation id="TA_Origem01">
+      <bpmn:text>O envio com nome/grupo desconhecido acontece no processo 01-envio-e-avaliacao.bpmn</bpmn:text>
+    </bpmn:textAnnotation>
+    <bpmn:association id="Assoc_Origem01" associationDirection="None" sourceRef="Start_PendNaFila" targetRef="TA_Origem01" />
+  </bpmn:process>
+
+  <bpmndi:BPMNDiagram id="Diagrama_02">
+    <bpmndi:BPMNPlane id="Plano_02" bpmnElement="Colab_Cadastro">
+      <bpmndi:BPMNShape id="Part_Candidato_di" bpmnElement="Part_Candidato" isHorizontal="true">
+        <dc:Bounds x="160" y="80" width="1440" height="320" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Part_EquipeCad_di" bpmnElement="Part_Equipe" isHorizontal="true">
+        <dc:Bounds x="160" y="440" width="1440" height="420" />
+      </bpmndi:BPMNShape>
+
+      <!-- candidato -->
+      <bpmndi:BPMNShape id="Start_QuerParticipar_di" bpmnElement="Start_QuerParticipar">
+        <dc:Bounds x="200" y="182" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="163" y="225" width="110" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_PreencheCadastro_di" bpmnElement="Task_PreencheCadastro">
+        <dc:Bounds x="280" y="160" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_EnviaCadastro_di" bpmnElement="Task_EnviaCadastro">
+        <dc:Bounds x="430" y="160" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Catch_Ativada_di" bpmnElement="Catch_Ativada">
+        <dc:Bounds x="600" y="182" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="580" y="225" width="80" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_PrimeiroLogin_di" bpmnElement="Task_PrimeiroLogin">
+        <dc:Bounds x="700" y="160" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_Participando_di" bpmnElement="End_Participando">
+        <dc:Bounds x="860" y="182" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="843" y="225" width="72" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="C01_di" bpmnElement="C01"><di:waypoint x="236" y="200" /><di:waypoint x="280" y="200" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="C02_di" bpmnElement="C02"><di:waypoint x="380" y="200" /><di:waypoint x="430" y="200" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="C03_di" bpmnElement="C03"><di:waypoint x="530" y="200" /><di:waypoint x="600" y="200" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="C04_di" bpmnElement="C04"><di:waypoint x="636" y="200" /><di:waypoint x="700" y="200" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="C05_di" bpmnElement="C05"><di:waypoint x="800" y="200" /><di:waypoint x="860" y="200" /></bpmndi:BPMNEdge>
+
+      <!-- equipe: fila de cadastros -->
+      <bpmndi:BPMNShape id="Start_CadNaFila_di" bpmnElement="Start_CadNaFila">
+        <dc:Bounds x="282" y="542" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="255" y="585" width="90" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_RevisaCadastro_di" bpmnElement="Task_RevisaCadastro">
+        <dc:Bounds x="380" y="520" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="GW_AprovarConta_di" bpmnElement="GW_AprovarConta" isMarkerVisible="true">
+        <dc:Bounds x="530" y="535" width="50" height="50" />
+        <bpmndi:BPMNLabel><dc:Bounds x="532" y="508" width="46" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_AtivaConta_di" bpmnElement="Task_AtivaConta">
+        <dc:Bounds x="640" y="520" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_ContaAtiva_di" bpmnElement="End_ContaAtiva">
+        <dc:Bounds x="810" y="542" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="797" y="585" width="62" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_ExcluiCadastro_di" bpmnElement="Task_ExcluiCadastro">
+        <dc:Bounds x="615" y="660" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_CadRecusado_di" bpmnElement="End_CadRecusado">
+        <dc:Bounds x="785" y="682" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="758" y="725" width="90" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="A01_di" bpmnElement="A01"><di:waypoint x="318" y="560" /><di:waypoint x="380" y="560" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="A02_di" bpmnElement="A02"><di:waypoint x="480" y="560" /><di:waypoint x="530" y="560" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="A03_di" bpmnElement="A03">
+        <di:waypoint x="580" y="560" /><di:waypoint x="640" y="560" />
+        <bpmndi:BPMNLabel><dc:Bounds x="595" y="540" width="24" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="A04_di" bpmnElement="A04"><di:waypoint x="740" y="560" /><di:waypoint x="810" y="560" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="A05_di" bpmnElement="A05">
+        <di:waypoint x="555" y="585" /><di:waypoint x="555" y="700" /><di:waypoint x="615" y="700" />
+        <bpmndi:BPMNLabel><dc:Bounds x="562" y="635" width="26" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="A06_di" bpmnElement="A06"><di:waypoint x="715" y="700" /><di:waypoint x="785" y="700" /></bpmndi:BPMNEdge>
+
+      <!-- equipe: fila de pendentes -->
+      <bpmndi:BPMNShape id="Start_PendNaFila_di" bpmnElement="Start_PendNaFila">
+        <dc:Bounds x="922" y="542" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="880" y="585" width="120" height="40" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_RevisaPendente_di" bpmnElement="Task_RevisaPendente">
+        <dc:Bounds x="1020" y="520" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="GW_AprovarPend_di" bpmnElement="GW_AprovarPend" isMarkerVisible="true">
+        <dc:Bounds x="1170" y="535" width="50" height="50" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1172" y="508" width="46" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_EntraNoBanco_di" bpmnElement="Task_EntraNoBanco">
+        <dc:Bounds x="1270" y="520" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_NoBanco_di" bpmnElement="End_NoBanco">
+        <dc:Bounds x="1420" y="542" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1395" y="585" width="86" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_RemoveDaFila_di" bpmnElement="Task_RemoveDaFila">
+        <dc:Bounds x="1245" y="660" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_PendRecusado_di" bpmnElement="End_PendRecusado">
+        <dc:Bounds x="1415" y="682" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1388" y="725" width="92" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="TA_Origem01_di" bpmnElement="TA_Origem01">
+        <dc:Bounds x="870" y="680" width="230" height="54" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="B01_di" bpmnElement="B01"><di:waypoint x="958" y="560" /><di:waypoint x="1020" y="560" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="B02_di" bpmnElement="B02"><di:waypoint x="1120" y="560" /><di:waypoint x="1170" y="560" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="B03_di" bpmnElement="B03">
+        <di:waypoint x="1220" y="560" /><di:waypoint x="1270" y="560" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1232" y="540" width="24" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="B04_di" bpmnElement="B04"><di:waypoint x="1370" y="560" /><di:waypoint x="1420" y="560" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="B05_di" bpmnElement="B05">
+        <di:waypoint x="1195" y="585" /><di:waypoint x="1195" y="700" /><di:waypoint x="1245" y="700" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1202" y="635" width="26" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="B06_di" bpmnElement="B06"><di:waypoint x="1345" y="700" /><di:waypoint x="1415" y="700" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Assoc_Origem01_di" bpmnElement="Assoc_Origem01">
+        <di:waypoint x="940" y="578" /><di:waypoint x="960" y="680" />
+      </bpmndi:BPMNEdge>
+
+      <!-- mensagens entre pools -->
+      <bpmndi:BPMNEdge id="MF_NovoCadastro_di" bpmnElement="MF_NovoCadastro">
+        <di:waypoint x="480" y="240" /><di:waypoint x="480" y="420" /><di:waypoint x="300" y="420" /><di:waypoint x="300" y="542" />
+        <bpmndi:BPMNLabel><dc:Bounds x="330" y="402" width="120" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="MF_ContaAtivada_di" bpmnElement="MF_ContaAtivada">
+        <di:waypoint x="690" y="520" /><di:waypoint x="690" y="420" /><di:waypoint x="618" y="420" /><di:waypoint x="618" y="218" />
+        <bpmndi:BPMNLabel><dc:Bounds x="700" y="450" width="90" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

@@ -1,0 +1,316 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  05 — Retenção e anonimização (processo ALVO — plano LGPD 1.5)
+  Artefato NORMATIVO (BPMN 2.0). Três relógios, todos contados de createdAt (envio):
+    · 30/45/53 dias  -> escalonamento de alertas pra equipe (foto parada)
+    · 2 meses        -> imagem morre no Cloudinary; registro é ANONIMIZADO (não apagado)
+    · 6 meses        -> identidade (uploadedBy, observacao) sai do registro
+    · 5 meses        -> backups vencidos expiram
+  Ordem obrigatória: congelar grupoOficial + gravar participantesDistintos ANTES de limpar.
+-->
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  id="Defs_Retencao"
+                  targetNamespace="http://memphis-pdv/bpmn/05-retencao-e-anonimizacao"
+                  exporter="Memphis PDV (plano LGPD)" exporterVersion="1.0">
+
+  <bpmn:collaboration id="Colab_Retencao">
+    <bpmn:participant id="Part_Sistema" name="Sistema — rotina diária (agendador no boot)" processRef="Process_Retencao" />
+    <bpmn:participant id="Part_CloudRet" name="Cloudinary (imagens)" />
+    <bpmn:participant id="Part_MongoRet" name="MongoDB Atlas (metadados)" />
+    <bpmn:participant id="Part_EquipeRet" name="Equipe (admin — permissão fotos)" processRef="Process_EquipeRet" />
+    <bpmn:messageFlow id="MF_AlertaPainel" name="alertas no painel (GET /api/admin/alertas)" sourceRef="Task_PublicaAlertas" targetRef="Start_Alerta" />
+    <bpmn:messageFlow id="MF_ApagaImagem" name="apaga a imagem" sourceRef="Task_ApagaImagem" targetRef="Part_CloudRet" />
+    <bpmn:messageFlow id="MF_AnonimizaReg" name="anonimiza o registro" sourceRef="Task_Anonimiza" targetRef="Part_MongoRet" />
+  </bpmn:collaboration>
+
+  <bpmn:process id="Process_Retencao" isExecutable="false">
+    <bpmn:startEvent id="Start_Diario" name="Uma vez por dia">
+      <bpmn:outgoing>S01</bpmn:outgoing>
+      <bpmn:timerEventDefinition id="TED_Diario" />
+    </bpmn:startEvent>
+    <bpmn:serviceTask id="Task_Varre" name="Varre as fotos por idade (relógio = createdAt, o dia do envio)">
+      <bpmn:incoming>S01</bpmn:incoming>
+      <bpmn:outgoing>S02</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:parallelGateway id="PG_Split" name="">
+      <bpmn:incoming>S02</bpmn:incoming>
+      <bpmn:outgoing>S03</bpmn:outgoing>
+      <bpmn:outgoing>S10</bpmn:outgoing>
+      <bpmn:outgoing>S15</bpmn:outgoing>
+    </bpmn:parallelGateway>
+
+    <!-- linha A: escalonamento de alertas (foto parada = não avaliada OU aprovada e não baixada) -->
+    <bpmn:exclusiveGateway id="GW_Idade" name="Idade da foto parada?">
+      <bpmn:incoming>S03</bpmn:incoming>
+      <bpmn:outgoing>S04</bpmn:outgoing>
+      <bpmn:outgoing>S05</bpmn:outgoing>
+      <bpmn:outgoing>S06</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="Task_Destaque" name="🟡 Destaque: contador no painel + marcação na galeria">
+      <bpmn:incoming>S04</bpmn:incoming>
+      <bpmn:outgoing>S07</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="Task_Critico" name="🔴 Crítico: banner fixo, não dispensável">
+      <bpmn:incoming>S05</bpmn:incoming>
+      <bpmn:outgoing>S08</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="Task_UltimaChamada" name="⚫ Última chamada: &#34;N fotos serão apagadas em 7 dias&#34;">
+      <bpmn:incoming>S06</bpmn:incoming>
+      <bpmn:outgoing>S09</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="GW_JuntaAlertas" name="">
+      <bpmn:incoming>S07</bpmn:incoming>
+      <bpmn:incoming>S08</bpmn:incoming>
+      <bpmn:incoming>S09</bpmn:incoming>
+      <bpmn:outgoing>S09b</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="Task_PublicaAlertas" name="Publica no painel junto com os cadastros pendentes (1 requisição só)">
+      <bpmn:incoming>S09b</bpmn:incoming>
+      <bpmn:outgoing>S09c</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="End_EquipeAvisada" name="Equipe avisada">
+      <bpmn:incoming>S09c</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <!-- linha B: expiração aos 2 meses (por idade, não por status) -->
+    <bpmn:serviceTask id="Task_ApagaImagem" name="≥ 2 meses: apaga a imagem no Cloudinary (baixada ou não, recusada ou não)">
+      <bpmn:incoming>S10</bpmn:incoming>
+      <bpmn:outgoing>S11</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="Task_Congela" name="ANTES de limpar: congela grupoOficial + grava participantesDistintos (mês × grupo)">
+      <bpmn:incoming>S11</bpmn:incoming>
+      <bpmn:outgoing>S12</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="Task_Anonimiza" name="Anonimiza: limpa promotor, promotorNorm, endereco, searchBlob">
+      <bpmn:incoming>S12</bpmn:incoming>
+      <bpmn:outgoing>S13</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="Task_Auditoria" name="Registra o resultado na auditoria">
+      <bpmn:incoming>S13</bpmn:incoming>
+      <bpmn:outgoing>S14</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="End_Anonimizado" name="Registro anonimizado segue alimentando os gráficos">
+      <bpmn:incoming>S14</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <!-- linha C: faxinas de prazo longo -->
+    <bpmn:serviceTask id="Task_TiraIdentidade" name="≥ 6 meses: remove uploadedBy e observacao (o retorno da recusa vive na coleção própria, por conta)">
+      <bpmn:incoming>S15</bpmn:incoming>
+      <bpmn:outgoing>S16</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="Task_ApagaBackups" name="≥ 5 meses: apaga backups vencidos">
+      <bpmn:incoming>S16</bpmn:incoming>
+      <bpmn:outgoing>S17</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="End_FaxinaLonga" name="Prazos longos cumpridos">
+      <bpmn:incoming>S17</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <bpmn:sequenceFlow id="S01" sourceRef="Start_Diario" targetRef="Task_Varre" />
+    <bpmn:sequenceFlow id="S02" sourceRef="Task_Varre" targetRef="PG_Split" />
+    <bpmn:sequenceFlow id="S03" sourceRef="PG_Split" targetRef="GW_Idade" />
+    <bpmn:sequenceFlow id="S04" name="30–44 dias" sourceRef="GW_Idade" targetRef="Task_Destaque" />
+    <bpmn:sequenceFlow id="S05" name="45–52 dias" sourceRef="GW_Idade" targetRef="Task_Critico" />
+    <bpmn:sequenceFlow id="S06" name="53–59 dias" sourceRef="GW_Idade" targetRef="Task_UltimaChamada" />
+    <bpmn:sequenceFlow id="S07" sourceRef="Task_Destaque" targetRef="GW_JuntaAlertas" />
+    <bpmn:sequenceFlow id="S08" sourceRef="Task_Critico" targetRef="GW_JuntaAlertas" />
+    <bpmn:sequenceFlow id="S09" sourceRef="Task_UltimaChamada" targetRef="GW_JuntaAlertas" />
+    <bpmn:sequenceFlow id="S09b" sourceRef="GW_JuntaAlertas" targetRef="Task_PublicaAlertas" />
+    <bpmn:sequenceFlow id="S09c" sourceRef="Task_PublicaAlertas" targetRef="End_EquipeAvisada" />
+    <bpmn:sequenceFlow id="S10" sourceRef="PG_Split" targetRef="Task_ApagaImagem" />
+    <bpmn:sequenceFlow id="S11" sourceRef="Task_ApagaImagem" targetRef="Task_Congela" />
+    <bpmn:sequenceFlow id="S12" sourceRef="Task_Congela" targetRef="Task_Anonimiza" />
+    <bpmn:sequenceFlow id="S13" sourceRef="Task_Anonimiza" targetRef="Task_Auditoria" />
+    <bpmn:sequenceFlow id="S14" sourceRef="Task_Auditoria" targetRef="End_Anonimizado" />
+    <bpmn:sequenceFlow id="S15" sourceRef="PG_Split" targetRef="Task_TiraIdentidade" />
+    <bpmn:sequenceFlow id="S16" sourceRef="Task_TiraIdentidade" targetRef="Task_ApagaBackups" />
+    <bpmn:sequenceFlow id="S17" sourceRef="Task_ApagaBackups" targetRef="End_FaxinaLonga" />
+
+    <bpmn:textAnnotation id="TA_Recusada">
+      <bpmn:text>Recusada é estado terminal: NÃO entra na lista de "não baixadas" (senão o alerta vira ruído)</bpmn:text>
+    </bpmn:textAnnotation>
+    <bpmn:association id="Assoc_Recusada" associationDirection="None" sourceRef="GW_Idade" targetRef="TA_Recusada" />
+  </bpmn:process>
+
+  <bpmn:process id="Process_EquipeRet" isExecutable="false">
+    <bpmn:startEvent id="Start_Alerta" name="Alerta de fotos paradas">
+      <bpmn:outgoing>T01</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="MED_Alerta" />
+    </bpmn:startEvent>
+    <bpmn:userTask id="Task_FiltroParadas" name="Abre o filtro &#34;só as paradas&#34; (mais antigas primeiro)">
+      <bpmn:incoming>T01</bpmn:incoming>
+      <bpmn:outgoing>T02</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="Task_AgeAntes" name="Avalia / baixa antes do prazo">
+      <bpmn:incoming>T02</bpmn:incoming>
+      <bpmn:outgoing>T03</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id="End_NadaExpiraSemVer" name="Nada expira sem ninguém ver">
+      <bpmn:incoming>T03</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="T01" sourceRef="Start_Alerta" targetRef="Task_FiltroParadas" />
+    <bpmn:sequenceFlow id="T02" sourceRef="Task_FiltroParadas" targetRef="Task_AgeAntes" />
+    <bpmn:sequenceFlow id="T03" sourceRef="Task_AgeAntes" targetRef="End_NadaExpiraSemVer" />
+  </bpmn:process>
+
+  <bpmndi:BPMNDiagram id="Diagrama_05">
+    <bpmndi:BPMNPlane id="Plano_05" bpmnElement="Colab_Retencao">
+      <bpmndi:BPMNShape id="Part_Sistema_di" bpmnElement="Part_Sistema" isHorizontal="true">
+        <dc:Bounds x="160" y="80" width="1160" height="620" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Part_CloudRet_di" bpmnElement="Part_CloudRet" isHorizontal="true">
+        <dc:Bounds x="560" y="760" width="300" height="60" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Part_MongoRet_di" bpmnElement="Part_MongoRet" isHorizontal="true">
+        <dc:Bounds x="1050" y="860" width="300" height="60" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Part_EquipeRet_di" bpmnElement="Part_EquipeRet" isHorizontal="true">
+        <dc:Bounds x="160" y="980" width="1160" height="260" />
+      </bpmndi:BPMNShape>
+
+      <!-- sistema -->
+      <bpmndi:BPMNShape id="Start_Diario_di" bpmnElement="Start_Diario">
+        <dc:Bounds x="222" y="182" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="198" y="225" width="84" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Varre_di" bpmnElement="Task_Varre">
+        <dc:Bounds x="310" y="160" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="PG_Split_di" bpmnElement="PG_Split">
+        <dc:Bounds x="460" y="175" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="GW_Idade_di" bpmnElement="GW_Idade" isMarkerVisible="true">
+        <dc:Bounds x="560" y="175" width="50" height="50" />
+        <bpmndi:BPMNLabel><dc:Bounds x="545" y="135" width="80" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Destaque_di" bpmnElement="Task_Destaque">
+        <dc:Bounds x="660" y="110" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Critico_di" bpmnElement="Task_Critico">
+        <dc:Bounds x="660" y="210" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_UltimaChamada_di" bpmnElement="Task_UltimaChamada">
+        <dc:Bounds x="660" y="310" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="GW_JuntaAlertas_di" bpmnElement="GW_JuntaAlertas" isMarkerVisible="true">
+        <dc:Bounds x="810" y="175" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_PublicaAlertas_di" bpmnElement="Task_PublicaAlertas">
+        <dc:Bounds x="910" y="160" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_EquipeAvisada_di" bpmnElement="End_EquipeAvisada">
+        <dc:Bounds x="1062" y="182" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1040" y="225" width="86" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="TA_Recusada_di" bpmnElement="TA_Recusada">
+        <dc:Bounds x="200" y="290" width="240" height="54" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Task_ApagaImagem_di" bpmnElement="Task_ApagaImagem">
+        <dc:Bounds x="560" y="440" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Congela_di" bpmnElement="Task_Congela">
+        <dc:Bounds x="710" y="440" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Anonimiza_di" bpmnElement="Task_Anonimiza">
+        <dc:Bounds x="860" y="440" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Auditoria_di" bpmnElement="Task_Auditoria">
+        <dc:Bounds x="1010" y="440" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_Anonimizado_di" bpmnElement="End_Anonimizado">
+        <dc:Bounds x="1160" y="462" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1118" y="505" width="120" height="40" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Task_TiraIdentidade_di" bpmnElement="Task_TiraIdentidade">
+        <dc:Bounds x="560" y="580" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_ApagaBackups_di" bpmnElement="Task_ApagaBackups">
+        <dc:Bounds x="710" y="580" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_FaxinaLonga_di" bpmnElement="End_FaxinaLonga">
+        <dc:Bounds x="872" y="602" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="838" y="645" width="104" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNEdge id="S01_di" bpmnElement="S01"><di:waypoint x="258" y="200" /><di:waypoint x="310" y="200" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="S02_di" bpmnElement="S02"><di:waypoint x="410" y="200" /><di:waypoint x="460" y="200" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="S03_di" bpmnElement="S03"><di:waypoint x="510" y="200" /><di:waypoint x="560" y="200" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="S04_di" bpmnElement="S04">
+        <di:waypoint x="585" y="175" /><di:waypoint x="585" y="150" /><di:waypoint x="660" y="150" />
+        <bpmndi:BPMNLabel><dc:Bounds x="592" y="132" width="64" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="S05_di" bpmnElement="S05">
+        <di:waypoint x="610" y="200" /><di:waypoint x="635" y="200" /><di:waypoint x="635" y="250" /><di:waypoint x="660" y="250" />
+        <bpmndi:BPMNLabel><dc:Bounds x="596" y="255" width="64" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="S06_di" bpmnElement="S06">
+        <di:waypoint x="585" y="225" /><di:waypoint x="585" y="350" /><di:waypoint x="660" y="350" />
+        <bpmndi:BPMNLabel><dc:Bounds x="590" y="355" width="64" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="S07_di" bpmnElement="S07">
+        <di:waypoint x="760" y="150" /><di:waypoint x="835" y="150" /><di:waypoint x="835" y="175" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="S08_di" bpmnElement="S08">
+        <di:waypoint x="760" y="250" /><di:waypoint x="835" y="250" /><di:waypoint x="835" y="225" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="S09_di" bpmnElement="S09">
+        <di:waypoint x="760" y="350" /><di:waypoint x="785" y="350" /><di:waypoint x="785" y="212" /><di:waypoint x="810" y="212" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="S09b_di" bpmnElement="S09b"><di:waypoint x="860" y="200" /><di:waypoint x="910" y="200" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="S09c_di" bpmnElement="S09c"><di:waypoint x="1010" y="200" /><di:waypoint x="1062" y="200" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="S10_di" bpmnElement="S10">
+        <di:waypoint x="485" y="225" /><di:waypoint x="485" y="480" /><di:waypoint x="560" y="480" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="S11_di" bpmnElement="S11"><di:waypoint x="660" y="480" /><di:waypoint x="710" y="480" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="S12_di" bpmnElement="S12"><di:waypoint x="810" y="480" /><di:waypoint x="860" y="480" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="S13_di" bpmnElement="S13"><di:waypoint x="960" y="480" /><di:waypoint x="1010" y="480" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="S14_di" bpmnElement="S14"><di:waypoint x="1110" y="480" /><di:waypoint x="1160" y="480" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="S15_di" bpmnElement="S15">
+        <di:waypoint x="497" y="225" /><di:waypoint x="497" y="620" /><di:waypoint x="560" y="620" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="S16_di" bpmnElement="S16"><di:waypoint x="660" y="620" /><di:waypoint x="710" y="620" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="S17_di" bpmnElement="S17"><di:waypoint x="810" y="620" /><di:waypoint x="872" y="620" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Assoc_Recusada_di" bpmnElement="Assoc_Recusada">
+        <di:waypoint x="570" y="215" /><di:waypoint x="430" y="295" />
+      </bpmndi:BPMNEdge>
+
+      <!-- equipe -->
+      <bpmndi:BPMNShape id="Start_Alerta_di" bpmnElement="Start_Alerta">
+        <dc:Bounds x="382" y="1042" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="352" y="1085" width="96" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_FiltroParadas_di" bpmnElement="Task_FiltroParadas">
+        <dc:Bounds x="480" y="1020" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_AgeAntes_di" bpmnElement="Task_AgeAntes">
+        <dc:Bounds x="630" y="1020" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_NadaExpiraSemVer_di" bpmnElement="End_NadaExpiraSemVer">
+        <dc:Bounds x="792" y="1042" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="752" y="1085" width="116" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="T01_di" bpmnElement="T01"><di:waypoint x="418" y="1060" /><di:waypoint x="480" y="1060" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="T02_di" bpmnElement="T02"><di:waypoint x="580" y="1060" /><di:waypoint x="630" y="1060" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="T03_di" bpmnElement="T03"><di:waypoint x="730" y="1060" /><di:waypoint x="792" y="1060" /></bpmndi:BPMNEdge>
+
+      <!-- mensagens -->
+      <bpmndi:BPMNEdge id="MF_AlertaPainel_di" bpmnElement="MF_AlertaPainel">
+        <di:waypoint x="985" y="240" /><di:waypoint x="985" y="940" /><di:waypoint x="400" y="940" /><di:waypoint x="400" y="1042" />
+        <bpmndi:BPMNLabel><dc:Bounds x="540" y="922" width="260" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="MF_ApagaImagem_di" bpmnElement="MF_ApagaImagem">
+        <di:waypoint x="610" y="520" /><di:waypoint x="610" y="545" /><di:waypoint x="520" y="545" /><di:waypoint x="520" y="720" /><di:waypoint x="610" y="720" /><di:waypoint x="610" y="760" />
+        <bpmndi:BPMNLabel><dc:Bounds x="618" y="726" width="100" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="MF_AnonimizaReg_di" bpmnElement="MF_AnonimizaReg">
+        <di:waypoint x="910" y="520" /><di:waypoint x="910" y="840" /><di:waypoint x="1100" y="840" /><di:waypoint x="1100" y="860" />
+        <bpmndi:BPMNLabel><dc:Bounds x="920" y="822" width="130" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

@@ -1,8 +1,20 @@
 # 04 — Fluxos de Negócio (BPMN)
 
-> **Artefato normativo:** o processo ponta-a-ponta existe em BPMN 2.0 de verdade em
-> [`bpmn/01-envio-e-avaliacao.bpmn`](bpmn/01-envio-e-avaliacao.bpmn) (Camunda Modeler /
-> bpmn.io). Em divergência com o Mermaid abaixo, **vale o `.bpmn`**.
+> **Artefatos normativos:** os processos existem em BPMN 2.0 de verdade em
+> [`docs/bpmn/`](bpmn/) (Camunda Modeler / bpmn.io). Em divergência com o Mermaid
+> desta página, **vale o `.bpmn`**.
+>
+> | Arquivo | Processo |
+> |---|---|
+> | [01-envio-e-avaliacao](bpmn/01-envio-e-avaliacao.bpmn) | Ponta a ponta: pool Promotor, pool Equipe, Cloudinary/Mongo como black-box |
+> | [02-cadastro-e-aprovacao](bpmn/02-cadastro-e-aprovacao.bpmn) | Sign up → fila de pendentes → aprovação de conta, promotor e grupo |
+> | [03-onboarding-de-contas](bpmn/03-onboarding-de-contas.bpmn) | Importação → convite por e-mail / provisória → 1º acesso → aceite. Subprocesso: reset + backup |
+> | [04-fechamento-do-lote](bpmn/04-fechamento-do-lote.bpmn) | ZIP → Excel → marcar baixado → purge |
+> | [05-retencao-e-anonimizacao](bpmn/05-retencao-e-anonimizacao.bpmn) | Os três relógios: escalonamento 30/45/53 → imagem aos 2 meses → identidade aos 6 |
+> | [06-direitos-do-titular](bpmn/06-direitos-do-titular.bpmn) | Solicitação → identificação → exportar ou anonimizar → resposta |
+>
+> Os `.bpmn` de **03**, **05** e **06** desenham o processo-**alvo** do plano LGPD
+> (`docs/PLANO.md`), que ainda está sendo implementado — os demais espelham o que já roda.
 
 ## Processo ponta-a-ponta
 

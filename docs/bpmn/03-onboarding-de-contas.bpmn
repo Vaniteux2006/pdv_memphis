@@ -1,0 +1,336 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  03 — Onboarding de contas em massa (dados do Valoo)
+  Artefato NORMATIVO (BPMN 2.0). Processo ALVO (plano LGPD 1.7/2.5/1.2): convite por
+  e-mail como caminho principal, senha provisória ALEATÓRIA como exceção pra quem não
+  tem e-mail; primeiro acesso = criar senha + confirmar dados + aceitar a política.
+  Inclui o subprocesso de reset de cadastros com backup obrigatório (1.8).
+-->
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  id="Defs_Onboarding"
+                  targetNamespace="http://memphis-pdv/bpmn/03-onboarding-de-contas"
+                  exporter="Memphis PDV (plano LGPD)" exporterVersion="1.0">
+
+  <bpmn:collaboration id="Colab_Onboarding">
+    <bpmn:participant id="Part_EquipeOnb" name="Equipe (admin — permissão contas)" processRef="Process_EquipeOnb" />
+    <bpmn:participant id="Part_SMTP" name="Serviço de e-mail transacional" />
+    <bpmn:participant id="Part_PromotorOnb" name="Promotor" processRef="Process_PromotorOnb" />
+    <bpmn:messageFlow id="MF_Convite" name="convite (token 7 dias)" sourceRef="Task_DisparaConvite" targetRef="Part_SMTP" />
+    <bpmn:messageFlow id="MF_EmailBemVindo" name="e-mail &#34;crie sua senha&#34;" sourceRef="Part_SMTP" targetRef="Start_RecebeConvite" />
+    <bpmn:messageFlow id="MF_SenhaEmMaos" name="senha provisória em mãos (via responsável)" sourceRef="Task_BaixaCSV" targetRef="Start_RecebeProvisoria" />
+  </bpmn:collaboration>
+
+  <bpmn:process id="Process_EquipeOnb" isExecutable="false">
+    <bpmn:startEvent id="Start_Planilha" name="Planilha do Valoo recebida">
+      <bpmn:outgoing>E01</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:userTask id="Task_ConfereColunas" name="Confere as colunas: nome, e-mail, telefone, grupo, região (sem CPF)">
+      <bpmn:incoming>E01</bpmn:incoming>
+      <bpmn:outgoing>E02</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="Task_Importa" name="Importa as linhas (máx 500 por vez)">
+      <bpmn:incoming>E02</bpmn:incoming>
+      <bpmn:outgoing>E03</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:exclusiveGateway id="GW_TemEmail" name="Linha tem e-mail?">
+      <bpmn:incoming>E03</bpmn:incoming>
+      <bpmn:outgoing>E04</bpmn:outgoing>
+      <bpmn:outgoing>E07</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="Task_CriaSemSenha" name="Cria a conta SEM senha utilizável + token de convite (7 dias, uso único)">
+      <bpmn:incoming>E04</bpmn:incoming>
+      <bpmn:outgoing>E05</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="Task_DisparaConvite" name="Dispara o convite em fila com retomada">
+      <bpmn:incoming>E05</bpmn:incoming>
+      <bpmn:outgoing>E06</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="Task_CriaProvisoria" name="Cria a conta com senha provisória ALEATÓRIA (expira em 30 dias)">
+      <bpmn:incoming>E07</bpmn:incoming>
+      <bpmn:outgoing>E08</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:userTask id="Task_BaixaCSV" name="Baixa o CSV de senhas e entrega ao responsável do grupo">
+      <bpmn:incoming>E08</bpmn:incoming>
+      <bpmn:outgoing>E09</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="Task_ConfereResumo" name="Confere o resumo: N criadas — X convites, Y sem e-mail">
+      <bpmn:incoming>E06</bpmn:incoming>
+      <bpmn:incoming>E09</bpmn:incoming>
+      <bpmn:outgoing>E10</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="Task_Reenvia" name="Reenvia convite se preciso (aba Contas)">
+      <bpmn:incoming>E10</bpmn:incoming>
+      <bpmn:outgoing>E11</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id="End_Disparado" name="Onboarding disparado">
+      <bpmn:incoming>E11</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="E01" sourceRef="Start_Planilha" targetRef="Task_ConfereColunas" />
+    <bpmn:sequenceFlow id="E02" sourceRef="Task_ConfereColunas" targetRef="Task_Importa" />
+    <bpmn:sequenceFlow id="E03" sourceRef="Task_Importa" targetRef="GW_TemEmail" />
+    <bpmn:sequenceFlow id="E04" name="Sim" sourceRef="GW_TemEmail" targetRef="Task_CriaSemSenha" />
+    <bpmn:sequenceFlow id="E05" sourceRef="Task_CriaSemSenha" targetRef="Task_DisparaConvite" />
+    <bpmn:sequenceFlow id="E06" sourceRef="Task_DisparaConvite" targetRef="Task_ConfereResumo" />
+    <bpmn:sequenceFlow id="E07" name="Não" sourceRef="GW_TemEmail" targetRef="Task_CriaProvisoria" />
+    <bpmn:sequenceFlow id="E08" sourceRef="Task_CriaProvisoria" targetRef="Task_BaixaCSV" />
+    <bpmn:sequenceFlow id="E09" sourceRef="Task_BaixaCSV" targetRef="Task_ConfereResumo" />
+    <bpmn:sequenceFlow id="E10" sourceRef="Task_ConfereResumo" targetRef="Task_Reenvia" />
+    <bpmn:sequenceFlow id="E11" sourceRef="Task_Reenvia" targetRef="End_Disparado" />
+
+    <!-- subprocesso destrutivo: reset de cadastros (1.8) -->
+    <bpmn:subProcess id="Sub_Reset" name="Reset de cadastros (ação destrutiva — só com crachá)" triggeredByEvent="false">
+      <bpmn:startEvent id="Start_Reset" name="Reset solicitado">
+        <bpmn:outgoing>R01</bpmn:outgoing>
+      </bpmn:startEvent>
+      <bpmn:userTask id="Task_DigitaResetar" name="Confirma digitando RESETAR (exige acesso total)">
+        <bpmn:incoming>R01</bpmn:incoming>
+        <bpmn:outgoing>R02</bpmn:outgoing>
+      </bpmn:userTask>
+      <bpmn:serviceTask id="Task_BackupAuto" name="Backup automático: users, promotores, refdata, config">
+        <bpmn:incoming>R02</bpmn:incoming>
+        <bpmn:outgoing>R03</bpmn:outgoing>
+      </bpmn:serviceTask>
+      <bpmn:exclusiveGateway id="GW_BackupOK" name="Backup OK?">
+        <bpmn:incoming>R03</bpmn:incoming>
+        <bpmn:outgoing>R04</bpmn:outgoing>
+        <bpmn:outgoing>R06</bpmn:outgoing>
+      </bpmn:exclusiveGateway>
+      <bpmn:serviceTask id="Task_ApagaBase" name="Apaga cadastros (nunca a própria conta) + registra na auditoria">
+        <bpmn:incoming>R04</bpmn:incoming>
+        <bpmn:outgoing>R05</bpmn:outgoing>
+      </bpmn:serviceTask>
+      <bpmn:endEvent id="End_BaseZerada" name="Base zerada">
+        <bpmn:incoming>R05</bpmn:incoming>
+      </bpmn:endEvent>
+      <bpmn:endEvent id="End_ResetAbortado" name="Aborta sem apagar nada">
+        <bpmn:incoming>R06</bpmn:incoming>
+        <bpmn:errorEventDefinition id="EED_Reset" />
+      </bpmn:endEvent>
+      <bpmn:sequenceFlow id="R01" sourceRef="Start_Reset" targetRef="Task_DigitaResetar" />
+      <bpmn:sequenceFlow id="R02" sourceRef="Task_DigitaResetar" targetRef="Task_BackupAuto" />
+      <bpmn:sequenceFlow id="R03" sourceRef="Task_BackupAuto" targetRef="GW_BackupOK" />
+      <bpmn:sequenceFlow id="R04" name="Sim" sourceRef="GW_BackupOK" targetRef="Task_ApagaBase" />
+      <bpmn:sequenceFlow id="R05" sourceRef="Task_ApagaBase" targetRef="End_BaseZerada" />
+      <bpmn:sequenceFlow id="R06" name="Não" sourceRef="GW_BackupOK" targetRef="End_ResetAbortado" />
+    </bpmn:subProcess>
+  </bpmn:process>
+
+  <bpmn:process id="Process_PromotorOnb" isExecutable="false">
+    <bpmn:startEvent id="Start_RecebeConvite" name="Recebe o e-mail de boas-vindas">
+      <bpmn:outgoing>P01</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="MED_Convite" />
+    </bpmn:startEvent>
+    <bpmn:userTask id="Task_AbreLink" name="Abre o link (token vale 7 dias, uso único)">
+      <bpmn:incoming>P01</bpmn:incoming>
+      <bpmn:outgoing>P02</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="Task_CriaSenha" name="Cria a própria senha (ninguém mais a conhece)">
+      <bpmn:incoming>P02</bpmn:incoming>
+      <bpmn:outgoing>P03</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:startEvent id="Start_RecebeProvisoria" name="Recebe a senha provisória do responsável">
+      <bpmn:outgoing>P04</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="MED_Provisoria" />
+    </bpmn:startEvent>
+    <bpmn:userTask id="Task_LogaTroca" name="Loga; o servidor força a troca da senha">
+      <bpmn:incoming>P04</bpmn:incoming>
+      <bpmn:outgoing>P05</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:exclusiveGateway id="GW_Junta" name="">
+      <bpmn:incoming>P03</bpmn:incoming>
+      <bpmn:incoming>P05</bpmn:incoming>
+      <bpmn:outgoing>P06</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:userTask id="Task_ConfirmaDados" name="Confirma os próprios dados (nome, grupo, região)">
+      <bpmn:incoming>P06</bpmn:incoming>
+      <bpmn:outgoing>P07</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="Task_AceitaPolitica" name="Aceita a política de privacidade (grava versão + data)">
+      <bpmn:incoming>P07</bpmn:incoming>
+      <bpmn:outgoing>P08</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id="End_ContaPronta" name="Conta pronta pra enviar fotos">
+      <bpmn:incoming>P08</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="P01" sourceRef="Start_RecebeConvite" targetRef="Task_AbreLink" />
+    <bpmn:sequenceFlow id="P02" sourceRef="Task_AbreLink" targetRef="Task_CriaSenha" />
+    <bpmn:sequenceFlow id="P03" sourceRef="Task_CriaSenha" targetRef="GW_Junta" />
+    <bpmn:sequenceFlow id="P04" sourceRef="Start_RecebeProvisoria" targetRef="Task_LogaTroca" />
+    <bpmn:sequenceFlow id="P05" sourceRef="Task_LogaTroca" targetRef="GW_Junta" />
+    <bpmn:sequenceFlow id="P06" sourceRef="GW_Junta" targetRef="Task_ConfirmaDados" />
+    <bpmn:sequenceFlow id="P07" sourceRef="Task_ConfirmaDados" targetRef="Task_AceitaPolitica" />
+    <bpmn:sequenceFlow id="P08" sourceRef="Task_AceitaPolitica" targetRef="End_ContaPronta" />
+  </bpmn:process>
+
+  <bpmndi:BPMNDiagram id="Diagrama_03">
+    <bpmndi:BPMNPlane id="Plano_03" bpmnElement="Colab_Onboarding">
+      <bpmndi:BPMNShape id="Part_EquipeOnb_di" bpmnElement="Part_EquipeOnb" isHorizontal="true">
+        <dc:Bounds x="160" y="80" width="1560" height="480" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Part_SMTP_di" bpmnElement="Part_SMTP" isHorizontal="true">
+        <dc:Bounds x="400" y="600" width="350" height="60" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Part_PromotorOnb_di" bpmnElement="Part_PromotorOnb" isHorizontal="true">
+        <dc:Bounds x="160" y="700" width="1560" height="360" />
+      </bpmndi:BPMNShape>
+
+      <!-- equipe -->
+      <bpmndi:BPMNShape id="Start_Planilha_di" bpmnElement="Start_Planilha">
+        <dc:Bounds x="222" y="182" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="190" y="225" width="100" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_ConfereColunas_di" bpmnElement="Task_ConfereColunas">
+        <dc:Bounds x="320" y="160" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Importa_di" bpmnElement="Task_Importa">
+        <dc:Bounds x="470" y="160" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="GW_TemEmail_di" bpmnElement="GW_TemEmail" isMarkerVisible="true">
+        <dc:Bounds x="620" y="175" width="50" height="50" />
+        <bpmndi:BPMNLabel><dc:Bounds x="602" y="135" width="86" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_CriaSemSenha_di" bpmnElement="Task_CriaSemSenha">
+        <dc:Bounds x="720" y="160" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_DisparaConvite_di" bpmnElement="Task_DisparaConvite">
+        <dc:Bounds x="870" y="160" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_CriaProvisoria_di" bpmnElement="Task_CriaProvisoria">
+        <dc:Bounds x="695" y="320" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_BaixaCSV_di" bpmnElement="Task_BaixaCSV">
+        <dc:Bounds x="845" y="320" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_ConfereResumo_di" bpmnElement="Task_ConfereResumo">
+        <dc:Bounds x="1020" y="160" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_Reenvia_di" bpmnElement="Task_Reenvia">
+        <dc:Bounds x="1170" y="160" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_Disparado_di" bpmnElement="End_Disparado">
+        <dc:Bounds x="1340" y="182" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1305" y="225" width="110" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="E01_di" bpmnElement="E01"><di:waypoint x="258" y="200" /><di:waypoint x="320" y="200" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E02_di" bpmnElement="E02"><di:waypoint x="420" y="200" /><di:waypoint x="470" y="200" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E03_di" bpmnElement="E03"><di:waypoint x="570" y="200" /><di:waypoint x="620" y="200" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E04_di" bpmnElement="E04">
+        <di:waypoint x="670" y="200" /><di:waypoint x="720" y="200" />
+        <bpmndi:BPMNLabel><dc:Bounds x="682" y="180" width="24" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E05_di" bpmnElement="E05"><di:waypoint x="820" y="200" /><di:waypoint x="870" y="200" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E06_di" bpmnElement="E06"><di:waypoint x="970" y="200" /><di:waypoint x="1020" y="200" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E07_di" bpmnElement="E07">
+        <di:waypoint x="645" y="225" /><di:waypoint x="645" y="360" /><di:waypoint x="695" y="360" />
+        <bpmndi:BPMNLabel><dc:Bounds x="652" y="285" width="26" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E08_di" bpmnElement="E08"><di:waypoint x="795" y="360" /><di:waypoint x="845" y="360" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E09_di" bpmnElement="E09">
+        <di:waypoint x="945" y="360" /><di:waypoint x="1070" y="360" /><di:waypoint x="1070" y="240" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E10_di" bpmnElement="E10"><di:waypoint x="1120" y="200" /><di:waypoint x="1170" y="200" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="E11_di" bpmnElement="E11"><di:waypoint x="1270" y="200" /><di:waypoint x="1340" y="200" /></bpmndi:BPMNEdge>
+
+      <!-- subprocesso reset -->
+      <bpmndi:BPMNShape id="Sub_Reset_di" bpmnElement="Sub_Reset" isExpanded="true">
+        <dc:Bounds x="1150" y="300" width="550" height="240" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Start_Reset_di" bpmnElement="Start_Reset">
+        <dc:Bounds x="1167" y="392" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1145" y="435" width="80" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_DigitaResetar_di" bpmnElement="Task_DigitaResetar">
+        <dc:Bounds x="1215" y="370" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_BackupAuto_di" bpmnElement="Task_BackupAuto">
+        <dc:Bounds x="1345" y="370" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="GW_BackupOK_di" bpmnElement="GW_BackupOK" isMarkerVisible="true">
+        <dc:Bounds x="1475" y="385" width="50" height="50" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1468" y="358" width="64" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_ApagaBase_di" bpmnElement="Task_ApagaBase">
+        <dc:Bounds x="1550" y="330" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_BaseZerada_di" bpmnElement="End_BaseZerada">
+        <dc:Bounds x="1660" y="352" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1645" y="395" width="66" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_ResetAbortado_di" bpmnElement="End_ResetAbortado">
+        <dc:Bounds x="1482" y="470" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1442" y="510" width="116" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="R01_di" bpmnElement="R01"><di:waypoint x="1203" y="410" /><di:waypoint x="1215" y="410" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="R02_di" bpmnElement="R02"><di:waypoint x="1315" y="410" /><di:waypoint x="1345" y="410" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="R03_di" bpmnElement="R03"><di:waypoint x="1445" y="410" /><di:waypoint x="1475" y="410" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="R04_di" bpmnElement="R04">
+        <di:waypoint x="1525" y="410" /><di:waypoint x="1537" y="410" /><di:waypoint x="1537" y="370" /><di:waypoint x="1550" y="370" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1528" y="385" width="24" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="R05_di" bpmnElement="R05"><di:waypoint x="1650" y="370" /><di:waypoint x="1660" y="370" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="R06_di" bpmnElement="R06">
+        <di:waypoint x="1500" y="435" /><di:waypoint x="1500" y="470" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1507" y="445" width="26" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+
+      <!-- promotor -->
+      <bpmndi:BPMNShape id="Start_RecebeConvite_di" bpmnElement="Start_RecebeConvite">
+        <dc:Bounds x="282" y="802" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="250" y="845" width="100" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_AbreLink_di" bpmnElement="Task_AbreLink">
+        <dc:Bounds x="380" y="780" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_CriaSenha_di" bpmnElement="Task_CriaSenha">
+        <dc:Bounds x="530" y="780" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Start_RecebeProvisoria_di" bpmnElement="Start_RecebeProvisoria">
+        <dc:Bounds x="282" y="942" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="245" y="985" width="110" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_LogaTroca_di" bpmnElement="Task_LogaTroca">
+        <dc:Bounds x="380" y="920" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="GW_Junta_di" bpmnElement="GW_Junta" isMarkerVisible="true">
+        <dc:Bounds x="680" y="795" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_ConfirmaDados_di" bpmnElement="Task_ConfirmaDados">
+        <dc:Bounds x="780" y="780" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_AceitaPolitica_di" bpmnElement="Task_AceitaPolitica">
+        <dc:Bounds x="930" y="780" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_ContaPronta_di" bpmnElement="End_ContaPronta">
+        <dc:Bounds x="1100" y="802" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1063" y="845" width="112" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="P01_di" bpmnElement="P01"><di:waypoint x="318" y="820" /><di:waypoint x="380" y="820" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="P02_di" bpmnElement="P02"><di:waypoint x="480" y="820" /><di:waypoint x="530" y="820" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="P03_di" bpmnElement="P03"><di:waypoint x="630" y="820" /><di:waypoint x="680" y="820" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="P04_di" bpmnElement="P04"><di:waypoint x="318" y="960" /><di:waypoint x="380" y="960" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="P05_di" bpmnElement="P05">
+        <di:waypoint x="480" y="960" /><di:waypoint x="705" y="960" /><di:waypoint x="705" y="845" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="P06_di" bpmnElement="P06"><di:waypoint x="730" y="820" /><di:waypoint x="780" y="820" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="P07_di" bpmnElement="P07"><di:waypoint x="880" y="820" /><di:waypoint x="930" y="820" /></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="P08_di" bpmnElement="P08"><di:waypoint x="1030" y="820" /><di:waypoint x="1100" y="820" /></bpmndi:BPMNEdge>
+
+      <!-- mensagens -->
+      <bpmndi:BPMNEdge id="MF_Convite_di" bpmnElement="MF_Convite">
+        <di:waypoint x="920" y="240" /><di:waypoint x="920" y="290" /><di:waypoint x="820" y="290" /><di:waypoint x="820" y="580" /><di:waypoint x="575" y="580" /><di:waypoint x="575" y="600" />
+        <bpmndi:BPMNLabel><dc:Bounds x="830" y="490" width="130" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="MF_EmailBemVindo_di" bpmnElement="MF_EmailBemVindo">
+        <di:waypoint x="575" y="660" /><di:waypoint x="575" y="680" /><di:waypoint x="300" y="680" /><di:waypoint x="300" y="802" />
+        <bpmndi:BPMNLabel><dc:Bounds x="330" y="662" width="140" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="MF_SenhaEmMaos_di" bpmnElement="MF_SenhaEmMaos">
+        <di:waypoint x="895" y="400" /><di:waypoint x="895" y="690" /><di:waypoint x="250" y="690" /><di:waypoint x="250" y="960" /><di:waypoint x="282" y="960" />
+        <bpmndi:BPMNLabel><dc:Bounds x="905" y="620" width="150" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
