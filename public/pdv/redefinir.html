@@ -18,22 +18,35 @@
 
   <div class="login-wrap">
     <div class="card login-card">
-      <h1>Nova senha</h1>
-      <p class="muted">Escolha uma nova senha para sua conta.</p>
+      <h1 id="titulo">Nova senha</h1>
+      <p class="muted" id="sub">Escolha uma nova senha para sua conta.</p>
       <form id="form">
-        <label for="senha">Nova senha (mín. 6 caracteres)</label>
+        <label for="senha" id="lbl-senha">Nova senha (mín. 6 caracteres)</label>
         <input id="senha" type="password" autocomplete="new-password" minlength="6" required />
-        <label for="senha2">Confirmar nova senha</label>
+        <label for="senha2" id="lbl-senha2">Confirmar nova senha</label>
         <input id="senha2" type="password" autocomplete="new-password" minlength="6" required />
         <div class="err" id="err" role="alert"></div>
-        <button type="submit" style="width:100%;margin-top:8px;">Redefinir senha</button>
+        <button type="submit" id="btn-enviar" style="width:100%;margin-top:8px;">Redefinir senha</button>
       </form>
     </div>
   </div>
 
   <script src="/common.js"></script>
   <script>
-    const token = new URLSearchParams(location.search).get('token');
+    const params = new URLSearchParams(location.search);
+    const token = params.get('token');
+    // Mesma tela, dois contextos: quem pediu reset está TROCANDO uma senha que tem; quem
+    // recebeu convite está CRIANDO a primeira. Falar em "nova senha" com quem nunca teve
+    // uma confunde — e é a primeira tela que 1.400 pessoas vão ver.
+    if (params.get('convite') === '1') {
+      document.title = 'Memphis PDV — Bem-vindo';
+      document.getElementById('titulo').textContent = 'Bem-vindo! Crie sua senha';
+      document.getElementById('sub').textContent =
+        'Você foi cadastrado na campanha de PDV. Escolha uma senha para acessar o sistema.';
+      document.getElementById('lbl-senha').textContent = 'Sua senha (mín. 6 caracteres)';
+      document.getElementById('lbl-senha2').textContent = 'Confirme sua senha';
+      document.getElementById('btn-enviar').textContent = 'Criar senha e entrar';
+    }
     if (!token) {
       document.getElementById('err').textContent = 'Link inválido. Peça um novo na tela de login.';
       document.getElementById('form').classList.add('hidden');

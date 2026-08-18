@@ -504,12 +504,25 @@ app.post('/api/admin/users/import', requireAuth, requirePerm('contas'), ah(async
     if (demais) return res.status(400).json({ error: `Planilha grande demais — o máximo é ${IMPORT_MAX_LINHAS} contas por importação. Divida em mais de um arquivo.` });
     if (!linhas.size) return res.status(400).json({ error: 'Não achei as colunas "Nome" e "E-mail" na planilha (o cabeçalho precisa estar nas 3 primeiras linhas)' });
 
+    // Quem não tem e-mail precisa de ALGUM identificador pra logar (o login é por e-mail).
+    // Gera um login interno a partir da matrícula ou do nome e marca a linha — a pessoa
+    // recebe login + senha em mãos, pelo responsável do grupo.
+    const DOMINIO_INTERNO = 'sem-email.memphis.local';
+    const slug = (t) => semAcento(String(t || '')).toLowerCase().replace(/[^a-z0-9]+/g, '.').replace(/^\.|\.$/g, '').slice(0, 40);
+    for (const d of linhas.values()) {
+      if (d.email) continue;
+      const base = d.matricula ? 'mat' + slug(d.matricula) : slug(d.name);
+      if (!base) continue; // sem nome nem matrícula não dá pra criar identificador nenhum
+      d.email = `${base}@${DOMINIO_INTERNO}`;
+      d.emailSintetico = true;
+    }
+
     const regiaoDe = (v) => {
       const alvo = semAcento(v).toUpperCase().trim();
       const r = db.REGIOES.find((x) => x.sigla === alvo || semAcento(x.nome).toUpperCase() === alvo);
       return r ? r.sigla : null;
     };
-    const criados = [], atualizados = [], erros = [];
+    const criados = [], atualizados = [], erros = [], paraConvidar = [], semEmail = [];
     for (const d of linhas.values()) {
       try {
         if (!/^[^\s@]+@[^\s@]+$/.test(d.email)) throw new Error('e-mail inválido'); // mesma regra do resto do app
@@ -527,17 +540,39 @@ app.post('/api/admin/users/import', requireAuth, requirePerm('contas'), ah(async
           atualizados.push({ name: existente.name, email: d.email });
         } else {
           if (!d.name) throw new Error('sem nome');
-          const senha = d.senha || d.name.split(/\s+/)[0].toUpperCase() + new Date().getFullYear();
           const role = /adm/i.test(d.role || '') ? 'admin' : 'promotor';
-          await db.createUser({ email: d.email, name: d.name, password: senha, role, mustChangePassword: true,
+          // Dois caminhos (decisão D3 do plano). A senha NUNCA é derivada de dado pessoal —
+          // era PRIMEIRONOME+ano, previsível pra qualquer um que soubesse o nome da pessoa.
+          const temEmailReal = !d.emailSintetico;
+          // Nasce sempre com senha aleatória e troca obrigatória. Quem tem e-mail nunca
+          // chega a usá-la: recebe o convite e cria a própria no link.
+          const senha = d.senha || db.senhaProvisoriaAleatoria();
+          const novo = await db.createUser({ email: d.email, name: d.name, password: senha, role, mustChangePassword: true,
             grupo: d.grupo, regiao: regiao || '', telefone: d.telefone, setor: d.setor, matricula: d.matricula });
-          criados.push({ name: d.name, email: d.email, senha, role });
+          if (temEmailReal && !d.senha) {
+            const conv = await db.criarConvite(novo.id);
+            paraConvidar.push({ id: novo.id, name: d.name, email: d.email, token: conv.token });
+            criados.push({ name: d.name, email: d.email, role, via: 'convite' });
+          } else {
+            // sem e-mail utilizável: a senha vai no CSV e é entregue pelo responsável do grupo
+            semEmail.push({ name: d.name, login: d.email, senha, role });
+            criados.push({ name: d.name, email: d.email, senha, role, via: 'provisoria' });
+          }
         }
       } catch (e) { erros.push({ linha: d.linha, email: d.email, motivo: e.message }); }
     }
     await auditar(req, { acao: db.ACOES.IMPORTOU_CONTAS, qtd: criados.length,
-      detalhe: `${criados.length} criada(s), ${atualizados.length} atualizada(s), ${erros.length} erro(s)` });
-    res.json({ criados, atualizados, erros });
+      detalhe: `${criados.length} criada(s) — ${paraConvidar.length} convite(s), ${semEmail.length} sem e-mail; ` +
+        `${atualizados.length} atualizada(s), ${erros.length} erro(s)` });
+    // Os convites saem DEPOIS da resposta, em fila: 1.400 envios não cabem numa requisição
+    // HTTP, e prender a tela do admin esperando SMTP seria pior que enviar em segundo plano.
+    const devLinks = enfileirarConvites(paraConvidar, req);
+    res.json({
+      criados, atualizados, erros,
+      convites: paraConvidar.length, semEmail,
+      // sem SMTP (dev) devolve os links pra dar pra testar — mesma ideia do forgot-password
+      ...(devLinks ? { devLinks } : {}),
+    });
   } catch (e) { res.status(400).json({ error: e.message }); }
 }));
 // modelo de planilha pro import: a planilha nasce PROTEGIDA — cabeçalho e estrutura
@@ -1065,6 +1100,44 @@ app.post('/api/admin/purge', requireAuth, requirePerm('fotos'), ah(async (req, r
   for (const s of removed) for (const img of imagensDe(s)) await store.remove(img.storedFile, img.resourceType || 'image');
   await auditar(req, { acao: db.ACOES.PURGOU_LOTE, qtd: removed.length });
   res.json({ removed: removed.length });
+}));
+
+// ---------- fila de convites (LGPD 1.7.2) ----------
+// Envio em blocos com pausa: 1.400 e-mails de uma vez derrubam Gmail comum (App Password
+// estrangula e pode bloquear a conta por spam). Em produção isso deve sair por serviço
+// transacional — é troca de variável de ambiente, não de código.
+// `conviteEnviadoEm` no usuário é o que permite RETOMAR de onde parou e saber quem já recebeu.
+const CONVITE_LOTE = 20, CONVITE_PAUSA_MS = 2000;
+function enfileirarConvites(lista, req) {
+  if (!lista.length) return null;
+  const base = process.env.APP_URL || `${req.headers['x-forwarded-proto'] || req.protocol}://${req.headers.host}`;
+  const link = (t) => `${base}/pdv/redefinir.html?token=${t}&convite=1`;
+
+  // fora de produção e sem SMTP: devolve os links em vez de tentar enviar
+  if (!isProd && !mailer.configured) return lista.map((p) => ({ email: p.email, link: link(p.token) }));
+
+  (async () => {
+    for (let i = 0; i < lista.length; i += CONVITE_LOTE) {
+      const bloco = lista.slice(i, i + CONVITE_LOTE);
+      await Promise.all(bloco.map(async (p) => {
+        try { await mailer.sendInviteEmail(p.email, link(p.token), p.name, db.CONVITE_DIAS); }
+        catch (e) { console.error(`[convite] falhou p/ ${p.email}: ${e.message}`); }
+      }));
+      if (i + CONVITE_LOTE < lista.length) await new Promise((r) => setTimeout(r, CONVITE_PAUSA_MS));
+    }
+    console.log(`[convite] ${lista.length} convite(s) processado(s)`);
+  })().catch((e) => console.error('[convite] fila falhou:', e.message));
+  return null;
+}
+
+// Reenviar convite (a pessoa perdeu o e-mail, ou o token de 7 dias venceu).
+app.post('/api/admin/users/:id/convite', requireAuth, requirePerm('contas'), ah(async (req, res) => {
+  try {
+    const conv = await db.criarConvite(req.params.id);
+    const devLinks = enfileirarConvites([{ id: req.params.id, ...conv }], req);
+    await auditar(req, { acao: db.ACOES.REENVIOU_CONVITE, alvo: req.params.id });
+    res.json({ ok: true, email: conv.email, ...(devLinks ? { devLink: devLinks[0].link } : {}) });
+  } catch (e) { res.status(400).json({ error: e.message }); }
 }));
 
 // ---------- retenção automática (LGPD 1.5) ----------

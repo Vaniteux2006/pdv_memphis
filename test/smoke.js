@@ -331,6 +331,45 @@ async function uploadCloud(cookie, tipo, file, filename, ct) {
   ck('exclusão completa exige acesso total (403 sem crachá)',
     (await req('POST', '/api/admin/users/' + tit.id + '/anonimizar?completo=1', { cookie: clc })).status === 403);
 
+
+  // ---- LGPD 1.7: convite por e-mail + provisória aleatória (os dois caminhos, D3) ----
+  const ExcelJS2 = require('exceljs');
+  const wbImp = new ExcelJS2.Workbook();
+  const wsImp = wbImp.addWorksheet('Contas');
+  wsImp.addRow(['Nome', 'E-mail', 'Matrícula', 'Região']);
+  const selo = Date.now();
+  wsImp.addRow(['COM EMAIL UM', 'convidado1_' + selo + '@teste.com', '', 'NE']);
+  wsImp.addRow(['COM EMAIL DOIS', 'convidado2_' + selo + '@teste.com', '', 'SP']);
+  wsImp.addRow(['SEM EMAIL ALGUM', '', 90000 + (selo % 9000), 'SUL']); // sem e-mail: cai na provisória
+  const b64 = Buffer.from(await wbImp.xlsx.writeBuffer()).toString('base64');
+  const imp = J((await req('POST', '/api/admin/users/import', { cookie: ac, body: { file: b64 } })).body);
+  ck('importa as 3 linhas', imp.criados.length === 3, JSON.stringify(imp.erros || []));
+  ck('quem tem e-mail vai por CONVITE (sem senha no resultado)',
+    imp.criados.filter((u) => u.via === 'convite').length === 2 && imp.criados.filter((u) => u.via === 'convite').every((u) => !u.senha));
+  ck('quem NÃO tem e-mail cai na provisória, separada no resultado',
+    imp.convites === 2 && imp.semEmail.length === 1 && !!imp.semEmail[0].senha, 'semEmail=' + JSON.stringify(imp.semEmail || []));
+  ck('a provisória é aleatória (não é PRIMEIRONOME+ano)',
+    !/^SEM\d{4}$/i.test(imp.semEmail[0].senha) && imp.semEmail[0].senha.length >= 6, 'senha=' + imp.semEmail[0].senha);
+  ck('login de quem não tem e-mail é interno e identificável', /@sem-email\./.test(imp.semEmail[0].login), imp.semEmail[0].login);
+  // sem SMTP em dev, o servidor devolve os links — dá pra seguir o fluxo inteiro
+  ck('convite gera link com marcador de convite', Array.isArray(imp.devLinks) && imp.devLinks.every((l) => /convite=1/.test(l.link)));
+  const tokenConv = new URL(imp.devLinks[0].link).searchParams.get('token');
+  const emailConv = imp.devLinks[0].email;
+  ck('conta convidada NÃO loga antes de criar a senha',
+    (await req('POST', '/api/login', { body: { email: emailConv, password: 'qualquer' } })).status === 401);
+  ck('criar a senha pelo convite funciona',
+    (await req('POST', '/api/reset-password', { body: { token: tokenConv, password: 'MinhaSenha9' } })).status === 200);
+  const logConv = await req('POST', '/api/login', { body: { email: emailConv, password: 'MinhaSenha9' } });
+  ck('depois de criar a senha, entra', !!logConv.cookie);
+  ck('e ainda assim precisa aceitar a política', J(logConv.body).precisaAceitar === true);
+  ck('token do convite é de uso único',
+    (await req('POST', '/api/reset-password', { body: { token: tokenConv, password: 'Outra1234' } })).status === 400);
+  // reenvio de convite
+  const idConv = J((await req('GET', '/api/admin/users', { cookie: ac })).body).find((u) => u.email === imp.devLinks[1].email).id;
+  const reenv = J((await req('POST', '/api/admin/users/' + idConv + '/convite', { cookie: ac })).body);
+  ck('reenviar convite gera link novo', !!reenv.devLink && /convite=1/.test(reenv.devLink));
+  ck('reenvio fica na auditoria', J((await req('GET', '/api/admin/auditoria?acao=reenviou_convite', { cookie: ac })).body).total >= 1);
+
   // ---- recuperação de senha (link de redefinição) ----
   const fp = J((await req('POST', '/api/forgot-password', { body: { email: 'joao@local' } })).body);
   ck('forgot-password responde genérico + devLink', fp.ok === true && !!fp.devLink, fp.devLink && fp.devLink.slice(0, 40));

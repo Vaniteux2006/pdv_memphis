@@ -31,6 +31,7 @@ enviado automaticamente pelo navegador. Erros retornam `{ "error": "mensagem" }`
 | Método | Rota | Acesso | Descrição |
 |--------|------|--------|-----------|
 | POST | `/api/aceitar-politica` | 🔑 | Registra o aceite da política na conta. A versão gravada é sempre a **vigente no servidor** — o cliente não escolhe qual aceita. |
+| POST | `/api/admin/users/:id/convite` | 👑 `contas` | **Reenvia o convite** de primeiro acesso (token de 7 dias). Útil quando a pessoa perdeu o e-mail ou o token venceu. |
 | GET | `/api/admin/users/:id/dados` | 👑 `contas` | **Exporta os dados do titular** (Art. 18, II): cadastro + submissões + retornos + pódios, em JSON para download. Sem hash de senha. |
 | POST | `/api/admin/users/:id/anonimizar` | 👑 `contas` | **Anonimiza o titular**: nome vira `[removido]`, `uploadedBy`/`endereco`/`observacao` saem e os **retornos são apagados** — senão sobraria dado pessoal órfão. Os números continuam alimentando os gráficos. `?completo=1` apaga tudo (fotos incluídas) e exige **acesso total**. |
 | GET | `/api/admin/auditoria` | 👑 `*` | Trilha de acesso a dado pessoal (Art. 37). Filtros `acao`, `userId`, `limit`, `skip`. **Só acesso total.** |
