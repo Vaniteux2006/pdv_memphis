@@ -31,6 +31,7 @@ enviado automaticamente pelo navegador. Erros retornam `{ "error": "mensagem" }`
 | Método | Rota | Acesso | Descrição |
 |--------|------|--------|-----------|
 | POST | `/api/aceitar-politica` | 🔑 | Registra o aceite da política na conta. A versão gravada é sempre a **vigente no servidor** — o cliente não escolhe qual aceita. |
+| GET | `/api/admin/auditoria` | 👑 `*` | Trilha de acesso a dado pessoal (Art. 37). Filtros `acao`, `userId`, `limit`, `skip`. **Só acesso total.** |
 | GET | `/api/contato` | — | Dados institucionais da LGPD (`razaoSocial`, `cnpj`, `enderecoMatriz`, `encarregadoEmail`, `contatoTelefone`, `politicaVersao`, `avisoTransicaoWhatsapp`). **Público de propósito:** a política precisa ser legível antes do login e o contato do encarregado é de divulgação obrigatória (Art. 41 §1º). |
 | PATCH | `/api/admin/institucionais` | 👑 `listas` | Edita os campos acima. Contato/versão exigem `listas`; `razaoSocial`, `cnpj` e `enderecoMatriz` exigem **acesso total** (`*`) — pedir sem ter dá **400**, não silêncio. |
 | GET | `/api/reference` | 🔑 | `{ regioes, pontosExtra, preAvaliacoes, cidades, grupos, clientes, promotores, limiteFotos, senhas }`. Servida de um **buffer pré-gzipado compartilhado** (maior payload do app). |

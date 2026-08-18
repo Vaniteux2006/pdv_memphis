@@ -141,6 +141,10 @@ function setAuthCookie(res, user) {
 // wrapper p/ handlers async: encaminha erros pro middleware de erro
 const ah = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
+// registro de acesso a dado pessoal (Art. 37). Só eventos sensíveis — ver lib/db.js.
+// Não é aguardado de propósito em rota de leitura pesada: auditar não pode atrasar a resposta.
+const auditar = (req, dados) => db.auditar({ user: req.user, ip: req.ip, ...dados });
+
 // garante que o Mongo conectou/seedou antes de qualquer rota.
 // lazy + cacheado: roda 1x por instância (ideal pra serverless e pra rodar local).
 let _ready;
@@ -438,8 +442,10 @@ app.post('/api/admin/users', requireAuth, requirePerm('contas'), ah(async (req, 
     // só quem tem acesso total consegue já criar um admin COM permissões; senão nasce sem nenhuma
     const perms = db.temPerm(req.user, '*') ? permissions : [];
     // senha "0" = a pessoa cria a própria senha no 1º acesso (tela de boas-vindas) — troca sempre obrigatória
-    res.json(await db.createUser({ email, name, password, role, mustChangePassword: mustChangePassword || password === '0',
-      grupo, regiao, telefone, setor, matricula, permissions: perms }));
+    const novo = await db.createUser({ email, name, password, role, mustChangePassword: mustChangePassword || password === '0',
+      grupo, regiao, telefone, setor, matricula, permissions: perms });
+    await auditar(req, { acao: db.ACOES.CRIOU_CONTA, alvo: novo.id, detalhe: `${novo.name} <${novo.email}> (${novo.role})` });
+    res.json(novo);
   } catch (e) { res.status(400).json({ error: e.message }); }
 }));
 // importa contas em massa a partir de uma planilha .xlsx (arquivo em base64 no JSON).
@@ -529,6 +535,8 @@ app.post('/api/admin/users/import', requireAuth, requirePerm('contas'), ah(async
         }
       } catch (e) { erros.push({ linha: d.linha, email: d.email, motivo: e.message }); }
     }
+    await auditar(req, { acao: db.ACOES.IMPORTOU_CONTAS, qtd: criados.length,
+      detalhe: `${criados.length} criada(s), ${atualizados.length} atualizada(s), ${erros.length} erro(s)` });
     res.json({ criados, atualizados, erros });
   } catch (e) { res.status(400).json({ error: e.message }); }
 }));
@@ -583,7 +591,9 @@ app.get('/api/admin/users/import-template.xlsx', requireAuth, requirePerm('conta
 app.patch('/api/admin/users/:id', requireAuth, requirePerm('contas'), ah(async (req, res) => {
   try {
     const { name, email, grupo, regiao, telefone, setor, matricula } = req.body;
-    res.json(await db.updateUser(req.params.id, { name, email, grupo, regiao, telefone, setor, matricula }));
+    const u = await db.updateUser(req.params.id, { name, email, grupo, regiao, telefone, setor, matricula });
+    await auditar(req, { acao: db.ACOES.EDITOU_CONTA, alvo: u.id, detalhe: `${u.name} <${u.email}>` });
+    res.json(u);
   } catch (e) { res.status(400).json({ error: e.message }); }
 }));
 // configurar as permissões de um admin — só acesso total
@@ -592,22 +602,43 @@ app.patch('/api/admin/users/:id/permissions', requireAuth, requirePerm('*'), ah(
   catch (e) { res.status(400).json({ error: e.message }); }
 }));
 // crachá de acesso total: gerar (só acesso total) e validar (qualquer admin)
-app.post('/api/admin/cracha', requireAuth, requirePerm('*'), ah(async (req, res) =>
-  res.json({ codigo: await db.gerarCracha() })));
+app.post('/api/admin/cracha', requireAuth, requirePerm('*'), ah(async (req, res) => {
+  const codigo = await db.gerarCracha();
+  await auditar(req, { acao: db.ACOES.GEROU_CRACHA });
+  res.json({ codigo });
+}));
 app.post('/api/cracha/validar', crachaLimiter, requireAuth, ah(async (req, res) => {
-  try { await db.validarCracha(req.user.id, req.body.codigo); res.json({ ok: true }); }
+  try {
+    await db.validarCracha(req.user.id, req.body.codigo);
+    // quem passou a ter acesso total, e quando — a mudança de privilégio mais forte do sistema
+    await auditar(req, { acao: db.ACOES.USOU_CRACHA });
+    res.json({ ok: true });
+  }
   catch (e) { res.status(400).json({ error: e.message }); }
 }));
 app.post('/api/admin/users/:id/password', requireAuth, requirePerm('contas'), ah(async (req, res) => {
-  try { await db.setPassword(req.params.id, req.body.password); res.json({ ok: true }); }
+  try {
+    await db.setPassword(req.params.id, req.body.password);
+    await auditar(req, { acao: db.ACOES.TROCOU_SENHA_DE, alvo: req.params.id });
+    res.json({ ok: true });
+  }
   catch (e) { res.status(400).json({ error: e.message }); }
 }));
 app.post('/api/admin/users/:id/active', requireAuth, requirePerm('contas'), ah(async (req, res) => {
-  try { await db.setUserActive(req.params.id, !!req.body.active); res.json({ ok: true }); }
+  try {
+    const ativo = !!req.body.active;
+    await db.setUserActive(req.params.id, ativo);
+    await auditar(req, { acao: ativo ? db.ACOES.REATIVOU_CONTA : db.ACOES.BANIU_CONTA, alvo: req.params.id });
+    res.json({ ok: true });
+  }
   catch (e) { res.status(400).json({ error: e.message }); }
 }));
 app.delete('/api/admin/users/:id', requireAuth, requirePerm('contas'), ah(async (req, res) => {
-  try { await db.deleteUser(req.params.id); res.json({ ok: true }); }
+  try {
+    await db.deleteUser(req.params.id);
+    await auditar(req, { acao: db.ACOES.EXCLUIU_CONTA, alvo: req.params.id });
+    res.json({ ok: true });
+  }
   catch (e) { res.status(400).json({ error: e.message }); }
 }));
 
@@ -660,7 +691,11 @@ app.post('/api/admin/ref/import', requireAuth, requirePerm('listas'), ah(async (
     }
     if (demais) return res.status(400).json({ error: `Planilha grande demais — o máximo é ${REF_IMPORT_MAX} nomes por lista numa importação. Divida em mais de um arquivo.` });
     if (!grupos.length && !promotores.length) return res.status(400).json({ error: 'Não achei nomes — a planilha precisa de uma coluna "Grupos" e/ou "Promotores" no cabeçalho (3 primeiras linhas), com um nome por linha embaixo' });
-    res.json(await db.importRefItems({ grupos, promotores }));
+    const r = await db.importRefItems({ grupos, promotores });
+    await auditar(req, { acao: db.ACOES.IMPORTOU_LISTAS,
+      qtd: (r.grupos?.novos || 0) + (r.promotores?.novos || 0),
+      detalhe: `grupos +${r.grupos?.novos || 0}, promotores +${r.promotores?.novos || 0}` });
+    res.json(r);
   } catch (e) { res.status(400).json({ error: e.message }); }
 }));
 // modelo de planilha pro import das listas: mesma pegada do modelo de contas —
@@ -803,6 +838,7 @@ const imagensDe = (s) => (s.imagens && s.imagens.length
 app.delete('/api/admin/submissions/:id', requireAuth, requirePerm('fotos'), ah(async (req, res) => {
   const s = await db.deleteSubmission(req.params.id);
   if (s) for (const img of imagensDe(s)) await store.remove(img.storedFile, img.resourceType || 'image');
+  if (s) await auditar(req, { acao: db.ACOES.EXCLUIU_FOTO, alvo: s.id, detalhe: `${s.promotor || ''} · ${s.cliente || ''}` });
   res.json({ ok: true });
 }));
 
@@ -908,6 +944,8 @@ app.get('/api/admin/download-manifest', requireAuth, requirePerm('fotos'), ah(as
 app.post('/api/admin/mark-downloaded', requireAuth, requirePerm('fotos'), ah(async (req, res) => {
   const ids = Array.isArray(req.body.ids) ? req.body.ids : [];
   if (ids.length) await db.markDownloaded(ids);
+  // é AQUI que se sabe quem levou as fotos: `baixado = true` diz que saíram, não quem levou
+  if (ids.length) await auditar(req, { acao: db.ACOES.BAIXOU_ZIP, qtd: ids.length, detalhe: ids.slice(0, 50).join(',') });
   res.json({ ok: true, count: ids.length });
 }));
 
@@ -973,13 +1011,20 @@ app.get('/api/admin/export.xlsx', requireAuth, requirePerm('fotos'), ah(async (r
   wb.calcProperties.fullCalcOnLoad = true;
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.setHeader('Content-Disposition', `attachment; filename="registro-clientes-${new Date().toISOString().slice(0, 10)}.xlsx"`);
+  await auditar(req, { acao: db.ACOES.EXPORTOU_EXCEL, qtd: rows.length });
   await wb.xlsx.write(res);
   res.end();
 }));
 
+// Leitura da auditoria: só ACESSO TOTAL. É o registro de quem acessou dado pessoal —
+// deixá-lo aberto a qualquer admin daria a cada um a trilha de todos os outros.
+app.get('/api/admin/auditoria', requireAuth, requirePerm('*'), ah(async (req, res) =>
+  res.json(await db.listAuditoria(req.query))));
+
 app.post('/api/admin/purge', requireAuth, requirePerm('fotos'), ah(async (req, res) => {
   const removed = await db.purgeDownloaded();
   for (const s of removed) for (const img of imagensDe(s)) await store.remove(img.storedFile, img.resourceType || 'image');
+  await auditar(req, { acao: db.ACOES.PURGOU_LOTE, qtd: removed.length });
   res.json({ removed: removed.length });
 }));
 

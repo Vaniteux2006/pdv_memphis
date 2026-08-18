@@ -151,6 +151,21 @@ Listas editáveis: `grupos` e `clientes` (usadas em autocomplete e filtros).
   acesso do dono — e o encarregado precisa ser trocável por quem assumir depois.
   Campo ausente cai num padrão embutido, então o sistema nunca fica sem contato.
 
+### `auditoria`
+Registro de **acesso a dado pessoal** (LGPD, Art. 37). Guarda **só evento sensível** —
+auditar toda requisição viraria o gargalo do Atlas M0 e afogaria o que importa em ruído.
+- Campos: `ts` (Date), `userId`, `userNome`, `userEmail`, `acao`, `alvo`, `qtd`, `ip`, `detalhe`.
+- Ações registradas: baixou ZIP, exportou Excel, excluiu foto, purgou lote, criou/editou/
+  baniu/reativou/excluiu conta, trocou senha de terceiro, importou contas, importou listas,
+  gerou crachá, usou crachá.
+- **Índice TTL de 12 meses** — some sozinha. Aqui o TTL *serve*, ao contrário da retenção de
+  fotos: apagar um registro de auditoria não deixa arquivo órfão no Cloudinary, é só texto.
+- Leitura em `GET /api/admin/auditoria`, restrita a **acesso total** — é a trilha de quem
+  acessou o quê; abri-la a qualquer admin daria a cada um o rastro de todos os outros.
+- Gravar **nunca derruba a operação**: se o Mongo falhar no registro, a foto ainda é baixada.
+  O motivo de existir: `baixado = true` diz que a foto saiu, mas não diz **quem** a levou —
+  que é exatamente a pergunta de uma auditoria.
+
 ## Índices (criados em `db.init()`)
 
 | Coleção | Índice | Tipo |
@@ -163,6 +178,8 @@ Listas editáveis: `grupos` e `clientes` (usadas em autocomplete e filtros).
 | `submissions` | `baixado` | simples |
 | `submissions` | `searchBlob` | simples |
 | `submissions` | `createdAt` | descendente |
+| `auditoria` | `ts` | **TTL 12 meses** |
+| `auditoria` | `ts` desc / `userId` | consulta da tela |
 
 ## Seed inicial
 

@@ -245,6 +245,25 @@ async function uploadCloud(cookie, tipo, file, filename, ct) {
   await req('PATCH', '/api/admin/institucionais', { cookie: ac, body: { politicaVersao: versaoAtual } }); // restaura
   ck('tela de aceite existe', (await req('GET', '/pdv/aceitar-politica.html')).status === 200);
 
+
+  // ---- LGPD 1.4: auditoria de acesso a dado pessoal (Art. 37) ----
+  const audAntes = J((await req('GET', '/api/admin/auditoria?limit=200', { cookie: ac })).body);
+  ck('auditoria é legível por quem tem acesso total', Array.isArray(audAntes.itens), audAntes.error || '');
+  ck('promotor não lê a auditoria (403)', (await req('GET', '/api/admin/auditoria', { cookie: pc })).status === 403);
+  // criar conta é evento auditável — e o registro tem que dizer QUEM fez
+  const emailAud = 'auditado_' + Date.now() + '@local';
+  const novoAud = J((await req('POST', '/api/admin/users', { cookie: ac, body: { name: 'Auditado', email: emailAud, password: 'auditado123' } })).body);
+  const audDepois = J((await req('GET', '/api/admin/auditoria?acao=criou_conta&limit=50', { cookie: ac })).body);
+  const evt = audDepois.itens.find((e) => (e.detalhe || '').includes(emailAud));
+  ck('criar conta grava na auditoria com autor e alvo', !!evt && evt.alvo === novoAud.id && !!evt.userNome && !!evt.ts,
+    evt ? 'autor=' + evt.userNome : 'evento não encontrado');
+  // banir e excluir também
+  await req('POST', '/api/admin/users/' + novoAud.id + '/active', { cookie: ac, body: { active: false } });
+  ck('banir grava na auditoria', J((await req('GET', '/api/admin/auditoria?acao=baniu_conta&limit=50', { cookie: ac })).body).itens.some((e) => e.alvo === novoAud.id));
+  await req('DELETE', '/api/admin/users/' + novoAud.id, { cookie: ac });
+  ck('excluir conta grava na auditoria', J((await req('GET', '/api/admin/auditoria?acao=excluiu_conta&limit=50', { cookie: ac })).body).itens.some((e) => e.alvo === novoAud.id));
+  ck('filtro por ação devolve só aquela ação', J((await req('GET', '/api/admin/auditoria?acao=criou_conta&limit=50', { cookie: ac })).body).itens.every((e) => e.acao === 'criou_conta'));
+
   // ---- recuperação de senha (link de redefinição) ----
   const fp = J((await req('POST', '/api/forgot-password', { body: { email: 'joao@local' } })).body);
   ck('forgot-password responde genérico + devLink', fp.ok === true && !!fp.devLink, fp.devLink && fp.devLink.slice(0, 40));
