@@ -32,10 +32,23 @@
         <div style="margin-top:6px;">🔑 Senha Mensal: <b id="sm-now">—</b> &nbsp;·&nbsp; Senha Semanal: <b id="ss-now">—</b></div>
       </div>
       <form id="form">
-        <label for="promotor">Nome Completo do Promotor</label>
-        <input id="promotor" list="promotores-dl" autocomplete="off" required placeholder="digite seu nome completo" />
-        <datalist id="promotores-dl"></datalist>
-        <div id="prom-status" class="muted" aria-live="polite" style="min-height:18px;margin-top:4px;"></div>
+        <!-- Nome, região e grupo NÃO são digitados: vêm da conta. O promotor confere e,
+             se estiver errado, abre um pedido de correção — reabrir um campo de texto aqui
+             seria refazer o buraco que o Bloco 2 fechou. -->
+        <div id="meus-dados" style="background:var(--bg-soft);border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:14px;line-height:1.7;">
+          <div style="font-weight:600;margin-bottom:4px;">Seus dados</div>
+          <div><span class="muted">Nome:</span> <b id="meu-nome">—</b></div>
+          <div><span class="muted">Grupo:</span> <b id="meu-grupo">—</b> &nbsp;·&nbsp; <span class="muted">Região:</span> <b id="minha-regiao">—</b></div>
+          <div style="margin-top:8px;">
+            <a href="#" id="dados-errados" style="font-size:13px;">Algum dado está errado?</a>
+          </div>
+          <div id="correcao-box" class="hidden" style="margin-top:10px;border-top:1px solid var(--line);padding-top:10px;">
+            <label for="correcao-txt">O que está errado?</label>
+            <input id="correcao-txt" maxlength="200" placeholder="ex: meu grupo agora é PDV NE 2" />
+            <button type="button" id="correcao-enviar" class="secondary" style="margin-top:8px;">Enviar para a equipe</button>
+            <div class="muted" id="correcao-msg" style="margin-top:6px;"></div>
+          </div>
+        </div>
 
         <label for="cliente">Loja: Nome do Cliente</label>
         <input id="cliente" list="clientes-dl" autocomplete="off" required placeholder="ex: NOVO SURUBIM" />
@@ -46,12 +59,8 @@
 
         <div class="row">
           <div><label for="dataExposicao">Data da exposição</label><input id="dataExposicao" type="date" required /></div>
-          <div><label for="regiao">Região</label><select id="regiao" required></select></div>
+          <div id="col-regiao" class="hidden"></div>
         </div>
-
-        <label for="grupo">Grupo</label>
-        <input id="grupo" list="grupos-dl" autocomplete="off" placeholder="grupo do promotor (ex: PDV NE)" />
-        <datalist id="grupos-dl"></datalist>
 
         <label>Fotos (1 imagem — ou 2 se for "antes e depois")</label>
         <div class="muted" style="background:var(--bg-soft);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:10px;line-height:1.55;">
@@ -98,10 +107,13 @@
       ref = await api('/api/reference');
       limite = ref.imagensPorFoto || 2;
       fillDL('clientes-dl', ref.clientes);
-      fillDL('grupos-dl', ref.grupos);
-      document.getElementById('regiao').innerHTML =
-        '<option value="">— região —</option>' +
-        ref.regioes.map((r) => `<option value="${r.sigla}">${esc(r.nome)} (${r.sigla})</option>`).join('');
+      // a referência do promotor não traz mais promotores[] nem grupos[] — ele não vê
+      // nome nem grupo de ninguém, e os dele vêm da conta
+      const nomeRegiao = (ref.regioes.find((r) => r.sigla === me.regiao) || {}).nome;
+      document.getElementById('meu-nome').textContent = me.name || '—';
+      document.getElementById('meu-grupo').textContent = me.grupo || '(sem grupo)';
+      document.getElementById('minha-regiao').textContent = nomeRegiao ? `${nomeRegiao} (${me.regiao})` : (me.regiao || '(sem região)');
+      if (!me.regiao) erroForm('Sua conta está sem região — fale com a equipe antes de enviar fotos.');
       document.getElementById('dataExposicao').value = new Date().toISOString().slice(0, 10); // hoje por padrão
       document.getElementById('hoje').textContent =
         'Hoje: ' + new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
@@ -112,7 +124,6 @@
       fetch('/api/contato').then((r) => r.json())
         .then((c) => { if (c.contatoTelefone) document.getElementById('contato-tel').textContent = c.contatoTelefone; })
         .catch(() => {});
-      prefill();
       renderThumbs(); // mostra a dica de quantas fotos dá pra mandar (limite vem do servidor)
       loadMine();
       setInterval(loadMine, 20000); // atualiza status/pré-avaliação a cada 20s
@@ -127,59 +138,26 @@
     const fillDL = (id, arr) =>
       (document.getElementById(id).innerHTML = arr.map((v) => `<option value="${esc(v)}">`).join(''));
 
-    // pré-preenche com o perfil da conta (nome, região e grupo definidos pelo admin)
-    function prefill() {
-      if (me.role === 'promotor' && me.name && !promInput.value) {
-        promInput.value = me.name;
-        promInput.dispatchEvent(new Event('input')); // dispara a checagem contra o banco
-      }
-      if (me.regiao) document.getElementById('regiao').value = me.regiao;
-      if (me.grupo && !val('grupo')) document.getElementById('grupo').value = me.grupo;
-    }
 
-    // ---- checagem do promotor contra o banco da empresa (com debounce) ----
-    const promInput = document.getElementById('promotor');
-    const promStatus = document.getElementById('prom-status');
-    let promTimer, promOk = false, promCadastrado = false;
-    promInput.addEventListener('input', () => {
-      clearTimeout(promTimer);
-      promStatus.textContent = '';
-      promOk = false; promCadastrado = false;
-      const nome = promInput.value.trim();
-      if (nome.length < 3) return;
-      promTimer = setTimeout(async () => {
-        const r = await api('/api/check-promotor?nome=' + encodeURIComponent(nome));
-        document.getElementById('promotores-dl').innerHTML = (r.sugestoes || []).map((s) => `<option value="${esc(s)}">`).join('');
-        if (r.existe) {
-          promOk = true;
-          promStatus.innerHTML = '<span style="color:var(--green)">✓ Promotor encontrado no banco</span>';
-        } else {
-          const sug = (r.sugestoes && r.sugestoes.length) ? ' Parecidos: ' +
-            r.sugestoes.slice(0, 3).map((s) => `<a href="#" data-act="pick-prom" data-nome="${esc(s)}">${esc(s)}</a>`).join(', ') : '';
-          promStatus.innerHTML = `<span style="color:var(--amber)">⚠ Nome não está no banco.${sug}</span> ` +
-            `<a href="#" style="font-weight:600" data-act="add-novo">➕ Cadastrar "${esc(nome)}" como novo</a>`;
-        }
-      }, 350);
-    });
-    // delegação: os links de sugestão carregam o nome em data-* (sem handler inline com dados do usuário)
-    promStatus.addEventListener('click', (e) => {
-      const el = e.target.closest('[data-act]');
-      if (!el) return;
+    // ---- pedido de correção de cadastro (2.5) ----
+    // "Está errado" NÃO abre campo pra digitar nome/grupo — isso reabriria o buraco do 2.1.
+    // Abre uma solicitação que cai na equipe, com texto livre só pra DESCREVER o problema.
+    // Quem corrige o cadastro é o admin.
+    document.getElementById('dados-errados').addEventListener('click', (e) => {
       e.preventDefault();
-      if (el.dataset.act === 'pick-prom') pickProm(el.dataset.nome);
-      else if (el.dataset.act === 'add-novo') addNovo();
+      document.getElementById('correcao-box').classList.toggle('hidden');
+      document.getElementById('correcao-txt').focus();
     });
-    const pickProm = (s) => { promInput.value = s; promInput.dispatchEvent(new Event('input')); };
-    const addNovo = async () => {
-      const nome = promInput.value.trim();
-      if (nome.length < 3) return;
+    document.getElementById('correcao-enviar').addEventListener('click', async () => {
+      const txt = val('correcao-txt').trim();
+      const msg = document.getElementById('correcao-msg');
+      if (txt.length < 5) { msg.textContent = 'Descreva o que está errado.'; return; }
       try {
-        const r = await api('/api/promotor-pendente', { method: 'POST', body: JSON.stringify({ nome }) });
-        if (r.jaExiste) { promOk = true; promStatus.innerHTML = '<span style="color:var(--green)">✓ Já está no banco</span>'; return; }
-        promCadastrado = true; // libera o envio sem o aviso
-        promStatus.innerHTML = '<span style="color:var(--teal)">✓ Enviado para aprovação da equipe. Pode mandar as fotos.</span>';
-      } catch (e) { toast(e.message, 'bad'); }
-    };
+        await api('/api/my/correcao-cadastro', { method: 'POST', body: JSON.stringify({ descricao: txt }) });
+        msg.innerHTML = '<span style="color:var(--green)">✓ Enviado. A equipe vai corrigir e te avisar.</span>';
+        document.getElementById('correcao-txt').value = '';
+      } catch (e) { msg.textContent = e.message; }
+    });
 
     // ---- fila de fotos: adiciona uma por vez, com "✕" pra tirar antes de enviar ----
     const fotos = document.getElementById('fotos');
@@ -245,7 +223,6 @@
     document.getElementById('form').addEventListener('submit', async (e) => {
       e.preventDefault();
       if (!staged.length) { erroForm('Adicione pelo menos 1 foto antes de enviar'); return; }
-      if (!promOk && !promCadastrado && !confirm('O nome do promotor não foi confirmado no banco. Enviar mesmo assim?')) return;
       const btn = document.getElementById('send');
       btn.disabled = true; addBtn.disabled = true;
       enviando = true; thumbsEl.classList.add('sending'); // some o "✕": depois de enviar não dá mais pra tirar
@@ -263,15 +240,14 @@
           method: 'POST',
           body: JSON.stringify({
             cliente: val('cliente'), endereco: val('endereco'), dataExposicao: val('dataExposicao'),
-            regiao: val('regiao'), grupo: val('grupo'), promotor: val('promotor'), fotos: fotosIds,
+            fotos: fotosIds, // nome, grupo e região vêm da SESSÃO — o servidor ignora o que viesse aqui
           }),
         });
         limpaErro();
         toast('Fotos enviadas!', 'ok');
-        e.target.reset(); promStatus.textContent = ''; promOk = false; promCadastrado = false;
+        e.target.reset(); // o reset não mexe em nome/grupo/região: eles não são mais campos
         document.getElementById('dataExposicao').value = new Date().toISOString().slice(0, 10);
         clearStaged();
-        prefill();
         loadMine();
       } catch (ex) { erroForm(ex.message); }
       finally {

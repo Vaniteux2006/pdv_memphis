@@ -294,24 +294,41 @@ app.get('/api/me', requireAuth, ah(async (req, res) => {
 // referência pré-serializada e pré-gzipada: é o maior payload do app (banco de promotores
 // inteiro) e todo usuário pede ao abrir — serializar por requisição estoura a memória em rajada.
 // O buffer é UM só, compartilhado por todas as respostas, e renova quando o cache do db renova.
-let refSer = { src: null, plain: null, gz: null };
+// DOIS buffers, um por perfil — "ninguém vê o nome de ninguém".
+// O promotor não recebe `promotores[]` (2.050 nomes de colegas) nem `grupos[]`; o grupo
+// dele vem da própria conta. Continua pré-serializado e pré-gzipado (é o maior payload do
+// app), só que agora em duas variantes.
+// ⚠️ Trocar os buffers entregaria a lista inteira a 1.400 pessoas — por isso a escolha é
+// feita num ponto só, pelo role, e existe caso de teste dedicado pra isso.
+const refSer = { src: null, admin: null, promotor: null };
+function refDoPerfil(ref, ehAdmin) {
+  if (ehAdmin) return ref;
+  const { promotores, grupos, permissoes, ...semNomes } = ref; // eslint-disable-line no-unused-vars
+  return semNomes;
+}
 app.get('/api/reference', requireAuth, ah(async (req, res) => {
   const ref = await db.reference();
   if (refSer.src !== ref) {
-    const plain = Buffer.from(JSON.stringify(ref));
-    refSer = { src: ref, plain, gz: zlib.gzipSync(plain) };
+    const mk = (obj) => { const b = Buffer.from(JSON.stringify(obj)); return { plain: b, gz: zlib.gzipSync(b) }; };
+    refSer.src = ref;
+    refSer.admin = mk(refDoPerfil(ref, true));
+    refSer.promotor = mk(refDoPerfil(ref, false));
   }
+  const buf = req.user.role === 'admin' ? refSer.admin : refSer.promotor;
   res.set('Content-Type', 'application/json; charset=utf-8');
   res.set('Vary', 'Accept-Encoding');
   if (/\bgzip\b/.test(req.headers['accept-encoding'] || '')) {
     res.set('Content-Encoding', 'gzip');
-    return res.end(refSer.gz);
+    return res.end(buf.gz);
   }
-  res.end(refSer.plain);
+  res.end(buf.plain);
 }));
 
 // checar nome do promotor contra o banco da empresa
-app.get('/api/check-promotor', requireAuth, ah(async (req, res) => {
+// Autocomplete de nomes: passa a exigir admin. Era o vazamento mais direto — digitar "MA"
+// devolvia 8 colegas reais pra qualquer pessoa logada. O promotor não precisa mais dele,
+// porque o nome dele vem da sessão.
+app.get('/api/check-promotor', requireAuth, requirePerm('listas'), ah(async (req, res) => {
   const nome = req.query.nome || '';
   const [existe, sugestoes] = await Promise.all([db.promotorExiste(nome), db.sugerirPromotores(nome)]);
   res.json({ existe, sugestoes });
@@ -418,7 +435,9 @@ app.post('/api/admin/senhas/import', requireAuth, requirePerm('listas'), ah(asyn
 }));
 
 // promotor cadastra um nome novo (não está no banco) -> fila de aprovação
-app.post('/api/promotor-pendente', requireAuth, ah(async (req, res) => {
+// Sai do fluxo do promotor junto com o campo de nome (2.1): quem valida o nome contra o
+// roster agora é a IMPORTAÇÃO, não cada envio. Fica como ferramenta da equipe.
+app.post('/api/promotor-pendente', requireAuth, requirePerm('listas'), ah(async (req, res) => {
   try { res.json(await db.addPendente(req.body.nome, req.user.email)); }
   catch (e) { res.status(400).json({ error: e.message }); }
 }));
@@ -826,7 +845,17 @@ app.delete('/api/admin/ref/:type', requireAuth, requirePerm('listas'), ah(async 
 
 // ---------- envio de fotos (promotor) — fotos já foram pro Cloudinary; aqui só os metadados ----------
 app.post('/api/submissions', requireAuth, ah(async (req, res) => {
-  const { cliente, endereco, regiao, promotor, grupo, dataExposicao } = req.body;
+  const { cliente, endereco, dataExposicao } = req.body;
+  // A identidade vem da SESSÃO, nunca do corpo. O campo de texto livre era herança da era
+  // do WhatsApp, quando não havia contas, e criava três problemas de uma vez:
+  //  1. privacidade — o autocomplete expunha os nomes dos colegas;
+  //  2. integridade — dava pra enviar foto em nome de outra pessoa (afeta cota, ranking,
+  //     aderência e a quem o pagamento é atribuído);
+  //  3. as travas de 1/semana e 4/mês contam por norm(promotor): digitando outro nome, a
+  //     cota zerava. As travas antifraude não travavam nada.
+  const promotor = req.user.name;
+  const regiao = req.user.regiao || '';
+  const grupo = req.user.grupo || '';
   const fotos = Array.isArray(req.body.fotos) ? req.body.fotos : [];
   // limpa do Cloudinary as fotos já enviadas, caso a gente rejeite o registro
   const limparOrfas = () => fotos.forEach((f) => f && f.publicId && store.remove(f.publicId, f.resourceType || 'image'));
@@ -835,9 +864,15 @@ app.post('/api/submissions', requireAuth, ah(async (req, res) => {
   const validas = fotos.filter((f) => f && typeof f.publicId === 'string' && f.publicId.startsWith('memphis-pdv/fotos/'));
   if (validas.length !== fotos.length) { limparOrfas(); return res.status(400).json({ error: 'Foto inválida' }); }
 
-  if (!cliente || !endereco || !regiao || !promotor || !dataExposicao) {
+  if (!cliente || !endereco || !dataExposicao) {
     limparOrfas();
-    return res.status(400).json({ error: 'Preencha cliente, endereço, data da exposição, região e promotor' });
+    return res.status(400).json({ error: 'Preencha cliente, endereço e data da exposição' });
+  }
+  // Região vem do cadastro agora. Se estiver vazia, a pessoa não tem como consertar
+  // sozinha — é justamente o que 2.5 impede que ela digite. Então diga o que fazer.
+  if (!regiao) {
+    limparOrfas();
+    return res.status(400).json({ error: 'Sua conta está sem região. Fale com a equipe para corrigir o cadastro antes de enviar.' });
   }
   if (validas.length === 0) return res.status(400).json({ error: 'Envie ao menos 1 imagem' });
   // 1 FOTO = 1 ou 2 imagens (2 = "antes e depois")
@@ -883,6 +918,24 @@ app.get('/api/my/submissions', requireAuth, ah(async (req, res) =>
 app.get('/api/my/retornos', requireAuth, ah(async (req, res) =>
   res.json(await db.listRetornos(req.user.id))));
 
+// Pedido de correção de cadastro (2.5). O promotor não digita mais nome/grupo/região —
+// então precisa de um caminho pra avisar quando estiverem errados. O texto livre aqui
+// DESCREVE o problema; quem corrige o cadastro é o admin.
+app.post('/api/my/correcao-cadastro', requireAuth, ah(async (req, res) => {
+  const descricao = String(req.body?.descricao || '').trim().slice(0, 500);
+  if (descricao.length < 5) return res.status(400).json({ error: 'Descreva o que está errado.' });
+  await db.abrirCorrecao(req.user, descricao);
+  res.json({ ok: true });
+}));
+
+// Fila de correções para a equipe
+app.get('/api/admin/correcoes', requireAuth, requirePerm('contas'), ah(async (req, res) =>
+  res.json(await db.listCorrecoes())));
+app.post('/api/admin/correcoes/:id/resolver', requireAuth, requirePerm('contas'), ah(async (req, res) => {
+  await db.resolverCorrecao(req.params.id, req.user);
+  res.json({ ok: true });
+}));
+
 // Lista PAGINADA + as contagens das sub-abas. Sem paginar, 5 mil fotos viram ~5 MB e ~5s
 // por abertura da aba — e o portão deixa passar 300 requisições ao mesmo tempo, então
 // alguns admins recarregando junto bastariam pra estourar a memória do servidor.
@@ -899,8 +952,17 @@ app.get('/api/admin/submissions', requireAuth, requirePerm('fotos'), ah(async (r
 }));
 
 app.patch('/api/admin/submissions/:id', requireAuth, requirePerm('fotos'), ah(async (req, res) => {
-  try { res.json(await db.updateSubmission(req.params.id, req.body)); }
-  catch (e) { res.status(400).json({ error: e.message }); }
+  try {
+    // trocar o autor é explícito e auditado — não passa por engano junto de outro campo
+    const trocandoAutor = req.body.promotor !== undefined && req.body.permitirTrocarAutor === true;
+    const antes = trocandoAutor ? await db.getSubmission(req.params.id) : null;
+    const doc = await db.updateSubmission(req.params.id, req.body);
+    if (trocandoAutor) {
+      await auditar(req, { acao: db.ACOES.CORRIGIU_AUTORIA, alvo: req.params.id,
+        detalhe: `${antes?.promotor || '?'} -> ${doc.promotor}` });
+    }
+    res.json(doc);
+  } catch (e) { res.status(400).json({ error: e.message }); }
 }));
 
 // imagens de uma submissão (novo formato = array; fallback p/ registros antigos com storedFile único)
@@ -1008,7 +1070,10 @@ app.get('/api/admin/download-manifest', requireAuth, requirePerm('fotos'), ah(as
       let i = 1;
       while (used.has(pth)) pth = `${base}_${i++}${ext}`;
       used.add(pth);
-      items.push({ id: s.id, idx: k, url: store.urlFor(img.storedFile, img.resourceType || 'image'), path: pth });
+      // URL que EXPIRA (1h): o manifesto entrega centenas de links de uma vez, e é o que
+      // sobra salvo em disco/histórico se vazar. Aqui o original é o certo mesmo — é o
+      // arquivo que vai pro servidor interno.
+      items.push({ id: s.id, idx: k, url: store.urlTemporaria(img.storedFile, img.resourceType || 'image'), path: pth });
     });
   }
   res.json({ items, count: items.length });
@@ -1169,7 +1234,7 @@ app.get('/api/admin/backup/baixar', requireAuth, requirePerm('*'), ah(async (req
   const existe = (await db.listBackups()).some((b) => b.storedFile === alvo);
   if (!existe) return res.status(404).json({ error: 'Backup não encontrado' });
   await auditar(req, { acao: db.ACOES.BAIXOU_BACKUP, alvo });
-  res.redirect(store.urlFor(alvo, 'raw'));
+  res.redirect(store.urlTemporaria(alvo, 'raw'));
 }));
 
 // A ação mais destrutiva do sistema: apaga o cadastro de ~1.400 pessoas.

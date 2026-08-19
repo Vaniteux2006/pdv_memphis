@@ -105,7 +105,7 @@ flowchart TD
 
 ## Pentest (autorizado)
 
-`test/pentest.js` ataca o próprio app (45 verificações). Resultado atual: **45 defesas OK, 0 achados.**
+`test/pentest.js` ataca o próprio app (49 verificações). Resultado atual: **49 defesas OK, 0 achados.**
 Cobre: exposição de arquivos sensíveis, travessia de diretório, acesso sem auth, **injeção
 NoSQL** no login, **forja/adulteração de JWT**, **escalonamento de privilégio**, **mass
 assignment**, **IDOR** (foto de outro promotor), abuso do upload assinado, **ReDoS/regex**
@@ -150,6 +150,56 @@ node test/pentest.js
 > 🔸 **Rate limit em serverless:** o `express-rate-limit` em memória funciona num host
 > **persistente** (Discloud). Na Vercel (serverless), cada instância tem sua própria
 > contagem — ali precisaria de um store compartilhado (ex: Redis/Upstash).
+
+## Minimização de exposição (Bloco 2, ago/2026)
+
+Diretriz do dono: **"ninguém vê o nome de ninguém"**. O promotor tem direito de enviar a
+foto, a data e o cliente — e nada mais.
+
+### A raiz: o promotor digitava o próprio nome
+Era herança da era do WhatsApp, quando não havia contas. O campo de texto livre criava
+**três** problemas ao mesmo tempo:
+
+| # | Problema | O que acontecia |
+|---|---|---|
+| 1 | **Privacidade** | O autocomplete devolvia colegas reais — digitar "MA" trazia 8 nomes. |
+| 2 | **Integridade** | Dava para enviar foto **em nome de outra pessoa** — afetando cota, ranking, aderência e a quem o pagamento é atribuído. |
+| 3 | 🔴 **Limites burláveis** | As travas de 1/semana e 4/mês contam por `norm(promotor)`. Digitando outro nome, a cota zerava: **as travas antifraude não travavam nada.** |
+
+**Conserto:** `promotor`, `regiao` e `grupo` vêm da **sessão**, nunca do corpo. O formulário
+caiu de sete campos para **três** (cliente, endereço, data + fotos).
+
+### O que o promotor deixou de receber
+- `/api/reference` é servida em **dois buffers pré-gzipados**, um por perfil: o do promotor
+  não tem `promotores[]` (2.050 nomes) nem `grupos[]`.
+  ⚠️ **Trocar os buffers entregaria a lista inteira a 1.400 pessoas** — por isso a escolha
+  acontece num ponto só e há caso de teste dedicado, inclusive na via gzipada.
+- `/api/check-promotor` e `/api/promotor-pendente` passaram a exigir admin.
+- **Exceção declarada:** `/api/ranking` mostra o **nome completo** dos vencedores a todos os
+  logados. É escolha consciente — premiação divulgada é finalidade própria — e está na
+  política de privacidade.
+
+### Contrapartidas
+- **Confirmação de cadastro:** como o promotor não digita mais nome/grupo/região, ele
+  confere na tela. "Está errado" **não abre campo de texto para os dados** (isso reabriria o
+  buraco) — abre um **pedido de correção** que cai na fila da equipe, com texto livre só
+  para descrever o problema. Um pedido em aberto por pessoa.
+- **Correção de autoria:** os casos legítimos existem (um supervisor lança a foto de quem
+  está sem celular). Antes a equipe era avisada e **não tinha como consertar**. Agora
+  `PATCH /api/admin/submissions/:id` aceita `promotor` **se** vier com
+  `permitirTrocarAutor: true` — explícito, só admin, e sempre auditado.
+
+### URLs de imagem com expiração
+⚠️ **Medido, não suposto:** o Cloudinary **ignora `expires_at` em URL de entrega**
+(`res.cloudinary.com`) — a URL sai byte a byte idêntica com e sem o campo. Expiração real
+em URL de entrega exige *token-based auth*, recurso de plano pago.
+
+Solução adotada, com a divisão onde cada lado ganha o que precisa:
+
+| Caminho | URL | Por quê |
+|---|---|---|
+| **Manifesto do ZIP** e **backup** | `private_download_url` com **1h** (testado: 200 dentro do prazo, **401** depois) | É aqui que mora o risco: o manifesto entrega centenas de links de uma vez, e é o que sobra salvo se vazar. Entrega o **original**, que é o que o acervo precisa. |
+| **Exibição na tela** (`/api/file/:id`) | URL assinada com `f_auto,q_auto` | Gerada a cada requisição, atrás de login, e usada na hora. Mantém a otimização que corta o peso da foto no celular — `private_download_url` não aceita transformação. |
 
 ## Backup e reset de cadastros (LGPD 1.8)
 

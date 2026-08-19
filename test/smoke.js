@@ -3,7 +3,7 @@
 //   node test/smoke.js
 const http = require('http');
 const https = require('https');
-function req(method, path, { body, cookie, raw } = {}) {
+function req(method, path, { body, cookie, raw, gzip } = {}) {
   return new Promise((resolve, reject) => {
     const data = body == null ? null : Buffer.isBuffer(body) ? body : Buffer.from(typeof body === 'string' ? body : JSON.stringify(body));
     const headers = {};
@@ -11,9 +11,15 @@ function req(method, path, { body, cookie, raw } = {}) {
     if (raw) headers['Content-Type'] = raw;
     if (data) headers['Content-Length'] = data.length;
     if (cookie) headers['Cookie'] = cookie;
+    if (gzip) headers['Accept-Encoding'] = 'gzip';
     const r = http.request({ host: 'localhost', port: 3000, method, path, headers }, (res) => {
       let c = []; res.on('data', (b) => c.push(b));
-      res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(c), cookie: (res.headers['set-cookie'] || [])[0], loc: res.headers.location }));
+      res.on('end', () => {
+        let buf = Buffer.concat(c);
+        // resposta gzipada precisa ser inflada pra o teste enxergar o conteúdo de verdade
+        if (res.headers['content-encoding'] === 'gzip') { try { buf = require('zlib').gunzipSync(buf); } catch {} }
+        resolve({ status: res.statusCode, body: buf, cookie: (res.headers['set-cookie'] || [])[0], loc: res.headers.location });
+      });
     });
     r.on('error', reject); if (data) r.write(data); r.end();
   });
@@ -67,10 +73,25 @@ async function uploadCloud(cookie, tipo, file, filename, ct) {
   const lo = await req('POST', '/api/logout', { cookie: ac });
   ck('logout limpa cookie', /mp_token=;/.test(lo.cookie || ''));
 
-  await req('POST', '/api/admin/users', { cookie: ac, body: { name: 'João Ninguém', email: 'joao@local', password: 'joao123' } });
+  // região e grupo vêm da CONTA agora (Bloco 2) — sem região, o envio é recusado de propósito
+  await req('POST', '/api/admin/users', { cookie: ac, body: { name: 'João Ninguém', email: 'joao@local', password: 'joao123', regiao: 'NE', grupo: 'CALMON' } });
   const pc = (await req('POST', '/api/login', { body: { email: 'joao@local', password: 'joao123' } })).cookie;
   const ref = J((await req('GET', '/api/reference', { cookie: pc })).body);
-  ck('reference', ref.promotores.length > 1000 && ref.regioes.length === 5);
+  // CASO OBRIGATÓRIO 2 do plano — pega a troca dos buffers gzip, a falha mais perigosa
+  // do Bloco 2 (serviria os 2.050 nomes a 1.400 pessoas sem ninguém perceber)
+  ck('promotor NÃO recebe a lista de promotores nem de grupos', ref.promotores === undefined && ref.grupos === undefined,
+    'promotores=' + typeof ref.promotores + ' grupos=' + typeof ref.grupos);
+  ck('promotor ainda recebe o que precisa (clientes, regiões, senhas)',
+    Array.isArray(ref.clientes) && ref.regioes.length === 5 && !!ref.senhas);
+  const refAdm = J((await req('GET', '/api/reference', { cookie: ac })).body);
+  ck('admin RECEBE a lista de promotores', Array.isArray(refAdm.promotores) && refAdm.promotores.length > 1000,
+    'admin promotores=' + (refAdm.promotores || []).length);
+  // e o mesmo vale pela via gzipada (é buffer separado — o risco é justamente trocá-los)
+  ck('promotor não recebe nomes nem no buffer gzipado',
+    J((await req('GET', '/api/reference', { cookie: pc, gzip: true })).body).promotores === undefined);
+  // CASO OBRIGATÓRIO 2c
+  ck('promotor não acessa o autocomplete de nomes (403)',
+    (await req('GET', '/api/check-promotor?nome=MA', { cookie: pc })).status === 403);
   ck('ponto extra "Grande volume de produtos" disponível', ref.pontosExtra.includes('Grande volume de produtos'));
 
   // ---- upload direto + envio ----
@@ -79,13 +100,31 @@ async function uploadCloud(cookie, tipo, file, filename, ct) {
   ck('upload direto no Cloudinary', /memphis-pdv\/fotos\//.test(foto1.publicId), foto1.publicId);
   const up = await req('POST', '/api/submissions', { cookie: pc, body: {
     cliente: 'NOVO SURUBIM', endereco: 'Av. Brasil 100', dataExposicao: '2026-06-21',
-    regiao: 'NE', grupo: 'CALMON', promotor: ref.promotores[0], fotos: [foto1],
+    fotos: [foto1], // nome/região/grupo vêm da sessão
   } });
   ck('registra metadados', up.status === 200 && J(up.body).count === 1, J(up.body).error || '');
   // trava: 1 foto por semana por promotor (mesma semana da exposição)
   const dupImg = await uploadCloud(pc, 'fotos', jpeg, 'dup.jpg', 'image/jpeg');
-  const dup = await req('POST', '/api/submissions', { cookie: pc, body: { cliente: 'OUTRA', endereco: 'X', dataExposicao: '2026-06-21', regiao: 'NE', grupo: '', promotor: ref.promotores[0], fotos: [dupImg] } });
+  const dup = await req('POST', '/api/submissions', { cookie: pc, body: { cliente: 'OUTRA', endereco: 'X', dataExposicao: '2026-06-21', fotos: [dupImg] } });
   ck('trava 1 foto/semana por promotor', dup.status === 400 && /semana/i.test(J(dup.body).error), J(dup.body).error);
+  // CASO OBRIGATÓRIO 2b — antes, digitar outro nome zerava a cota E atribuía a foto (e o
+  // pagamento) a outra pessoa. Agora o corpo é ignorado: vale a sessão.
+  const forjada = await req('POST', '/api/submissions', { cookie: pc, body: {
+    cliente: 'FORJADA', endereco: 'X', dataExposicao: '2026-06-22',
+    promotor: 'OUTRA PESSOA QUALQUER', regiao: 'SUL', grupo: 'GRUPO FALSO',
+    fotos: [await uploadCloud(pc, 'fotos', jpeg, 'forj.jpg', 'image/jpeg')],
+  } });
+  ck('envio com promotor forjado no corpo é aceito...', forjada.status === 200, J(forjada.body).error || '');
+  const forjadaDoc = J((await req('GET', '/api/my/submissions', { cookie: pc })).body).find((x) => x.cliente === 'FORJADA');
+  ck('...mas grava o nome DA SESSÃO, não o do corpo', forjadaDoc.promotor === 'João Ninguém', 'gravou=' + forjadaDoc.promotor);
+  ck('...e a região/grupo também vêm da conta', forjadaDoc.regiao === 'NE' && forjadaDoc.grupo === 'CALMON',
+    forjadaDoc.regiao + '/' + forjadaDoc.grupo);
+  // a foto forjada agora ocupa a cota do PRÓPRIO promotor — o bypass acabou
+  const bypass = await req('POST', '/api/submissions', { cookie: pc, body: { cliente: 'BYPASS', endereco: 'X', dataExposicao: '2026-06-23',
+    promotor: 'MAIS OUTRA PESSOA', fotos: [await uploadCloud(pc, 'fotos', jpeg, 'byp.jpg', 'image/jpeg')] } });
+  ck('não dá mais pra zerar a cota trocando o nome', bypass.status === 400 && /semana/i.test(J(bypass.body).error), J(bypass.body).error);
+  // some com ela: existia só pra provar o 2b, e sujaria as contagens do lote adiante
+  await req('DELETE', '/api/admin/submissions/' + forjadaDoc.id, { cookie: ac });
   const mine = J((await req('GET', '/api/my/submissions', { cookie: pc })).body)[0];
   ck('foto guarda a imagem no Cloudinary', /memphis-pdv\/fotos\//.test((mine.imagens && mine.imagens[0] && mine.imagens[0].storedFile) || ''));
   const id = mine.id;
@@ -100,10 +139,12 @@ async function uploadCloud(cookie, tipo, file, filename, ct) {
 
   // ---- pendente ----
   const novo = 'FULANO SMOKE ' + Date.now();
-  await req('POST', '/api/promotor-pendente', { cookie: pc, body: { nome: novo } });
+  ck('promotor não cadastra nome novo (saiu do fluxo dele)',
+    (await req('POST', '/api/promotor-pendente', { cookie: pc, body: { nome: novo } })).status === 403);
+  await req('POST', '/api/promotor-pendente', { cookie: ac, body: { nome: novo } });
   const lista = J((await req('GET', '/api/admin/pendentes', { cookie: ac })).body);
   await req('POST', '/api/admin/pendentes/' + lista.find((p) => p.nome === novo).id + '/aprovar', { cookie: ac });
-  ck('pendente aprovado entra no banco', J((await req('GET', '/api/check-promotor?nome=' + encodeURIComponent(novo), { cookie: pc })).body).existe === true);
+  ck('pendente aprovado entra no banco', J((await req('GET', '/api/check-promotor?nome=' + encodeURIComponent(novo), { cookie: ac })).body).existe === true);
 
   // ---- admin cria outro admin ----
   const adminEmail = 'admin2_' + Date.now() + '@local';
@@ -157,7 +198,7 @@ async function uploadCloud(cookie, tipo, file, filename, ct) {
 
   // ---- foto recusada NÃO é baixada ----
   const fotoR = await uploadCloud(pc, 'fotos', jpeg, 'r.jpg', 'image/jpeg');
-  await req('POST', '/api/submissions', { cookie: pc, body: { cliente: 'LOJA RECUSADA', endereco: 'R', dataExposicao: '2026-06-20', regiao: 'CN', grupo: '', promotor: ref.promotores[1], fotos: [fotoR] } });
+  await req('POST', '/api/submissions', { cookie: pc, body: { cliente: 'LOJA RECUSADA', endereco: 'R', dataExposicao: '2026-06-28', fotos: [fotoR] } });
   const subR = J((await req('GET', '/api/admin/submissions?status=novos', { cookie: ac })).body).itens[0];
   // recusar sem motivo não passa mais — o promotor vê o motivo, então "Recusada" sozinho seria a queixa antiga
   const semMotivo = await req('PATCH', '/api/admin/submissions/' + subR.id, { cookie: ac, body: { validado: false } });
@@ -178,7 +219,7 @@ async function uploadCloud(cookie, tipo, file, filename, ct) {
   // ---- foto com 2 imagens ("antes e depois") = 1 foto, 2 arquivos no ZIP ----
   const im1 = await uploadCloud(pc, 'fotos', jpeg, 'a1.jpg', 'image/jpeg');
   const im2 = await uploadCloud(pc, 'fotos', jpeg, 'a2.jpg', 'image/jpeg');
-  const dois = await req('POST', '/api/submissions', { cookie: pc, body: { cliente: 'ANTES E DEPOIS', endereco: 'X', dataExposicao: '2026-07-05', regiao: 'SE', grupo: '', promotor: 'FULANO 2IMG', fotos: [im1, im2] } });
+  const dois = await req('POST', '/api/submissions', { cookie: pc, body: { cliente: 'ANTES E DEPOIS', endereco: 'X', dataExposicao: '2026-07-05', fotos: [im1, im2] } });
   ck('2 imagens = 1 foto (count 1)', dois.status === 200 && J(dois.body).count === 1, J(dois.body).error || '');
   const subAD = J((await req('GET', '/api/admin/submissions?status=novos', { cookie: ac })).body).itens[0];
   await req('PATCH', '/api/admin/submissions/' + subAD.id, { cookie: ac, body: { validado: true } });
@@ -268,13 +309,13 @@ async function uploadCloud(cookie, tipo, file, filename, ct) {
   // ---- LGPD 1.5: cota da recusada, alertas e retenção em modo só-relatório ----
   // foto recusada NÃO consome cota — na prática é como se não tivesse mandado nada
   const semanaImg = await uploadCloud(pc, 'fotos', jpeg, 'cota1.jpg', 'image/jpeg');
-  const env1 = await req('POST', '/api/submissions', { cookie: pc, body: { cliente: 'COTA A', endereco: 'X', dataExposicao: '2026-05-04', regiao: 'NE', grupo: '', promotor: ref.promotores[3], fotos: [semanaImg] } });
+  const env1 = await req('POST', '/api/submissions', { cookie: pc, body: { cliente: 'COTA A', endereco: 'X', dataExposicao: '2026-05-04', fotos: [semanaImg] } });
   ck('1ª foto da semana entra', env1.status === 200, J(env1.body).error || '');
-  const bloq = await req('POST', '/api/submissions', { cookie: pc, body: { cliente: 'COTA B', endereco: 'X', dataExposicao: '2026-05-05', regiao: 'NE', grupo: '', promotor: ref.promotores[3], fotos: [await uploadCloud(pc, 'fotos', jpeg, 'cota2.jpg', 'image/jpeg')] } });
+  const bloq = await req('POST', '/api/submissions', { cookie: pc, body: { cliente: 'COTA B', endereco: 'X', dataExposicao: '2026-05-05', fotos: [await uploadCloud(pc, 'fotos', jpeg, 'cota2.jpg', 'image/jpeg')] } });
   ck('2ª na mesma semana é barrada', bloq.status === 400 && /semana/i.test(J(bloq.body).error));
   const idCota = J((await req('GET', '/api/admin/submissions?q=' + encodeURIComponent('COTA A'), { cookie: ac })).body).itens[0].id;
   await req('PATCH', '/api/admin/submissions/' + idCota, { cookie: ac, body: { validado: false, motivoRecusa: 'Foto fora de foco' } });
-  const reenvio = await req('POST', '/api/submissions', { cookie: pc, body: { cliente: 'COTA C', endereco: 'X', dataExposicao: '2026-05-06', regiao: 'NE', grupo: '', promotor: ref.promotores[3], fotos: [await uploadCloud(pc, 'fotos', jpeg, 'cota3.jpg', 'image/jpeg')] } });
+  const reenvio = await req('POST', '/api/submissions', { cookie: pc, body: { cliente: 'COTA C', endereco: 'X', dataExposicao: '2026-05-06', fotos: [await uploadCloud(pc, 'fotos', jpeg, 'cota3.jpg', 'image/jpeg')] } });
   ck('recusar devolve a vaga na hora (recusada não consome cota)', reenvio.status === 200, J(reenvio.body).error || '');
   // o retorno da recusa fica numa coleção própria, que sobrevive à anonimização da foto
   ck('promotor lê o retorno da recusa', J((await req('GET', '/api/my/retornos', { cookie: pc })).body).some((r) => r.motivoRecusa === 'Foto fora de foco'));
@@ -298,7 +339,7 @@ async function uploadCloud(cookie, tipo, file, filename, ct) {
   const emailTit = 'titular_' + Date.now() + '@local';
   const tit = J((await req('POST', '/api/admin/users', { cookie: ac, body: { name: 'TITULAR TESTE', email: emailTit, password: 'titular123', grupo: 'G-TIT', regiao: 'NE' } })).body);
   const tc = (await req('POST', '/api/login', { body: { email: emailTit, password: 'titular123' } })).cookie;
-  await req('POST', '/api/submissions', { cookie: tc, body: { cliente: 'LOJA TITULAR', endereco: 'Rua Sigilo, 9', dataExposicao: '2026-04-06', regiao: 'NE', grupo: 'G-TIT', promotor: ref.promotores[5], fotos: [await uploadCloud(tc, 'fotos', jpeg, 'tit.jpg', 'image/jpeg')] } });
+  await req('POST', '/api/submissions', { cookie: tc, body: { cliente: 'LOJA TITULAR', endereco: 'Rua Sigilo, 9', dataExposicao: '2026-04-06', fotos: [await uploadCloud(tc, 'fotos', jpeg, 'tit.jpg', 'image/jpeg')] } });
   const subTit = J((await req('GET', '/api/my/submissions', { cookie: tc })).body)[0];
   await req('PATCH', '/api/admin/submissions/' + subTit.id, { cookie: ac, body: { validado: false, motivoRecusa: 'Produto errado' } });
 
@@ -386,6 +427,36 @@ async function uploadCloud(cookie, tipo, file, filename, ct) {
   ck('reset exige acesso total', (await req('POST', '/api/admin/reset-cadastros', { cookie: clc, body: { confirmacao: 'RESETAR' } })).status === 403);
   const contasAntes = J((await req('GET', '/api/admin/users', { cookie: ac })).body).length;
   ck('nada foi apagado pelas tentativas recusadas', J((await req('GET', '/api/admin/users', { cookie: ac })).body).length === contasAntes);
+
+
+  // ---- 2.5: pedido de correção de cadastro ----
+  ck('correção com descrição curta é recusada', (await req('POST', '/api/my/correcao-cadastro', { cookie: pc, body: { descricao: 'oi' } })).status === 400);
+  ck('promotor abre pedido de correção', (await req('POST', '/api/my/correcao-cadastro', { cookie: pc, body: { descricao: 'meu grupo mudou para PDV NE 5' } })).status === 200);
+  const corr = J((await req('GET', '/api/admin/correcoes', { cookie: ac })).body);
+  ck('o pedido cai na fila da equipe com o cadastro atual', corr.some((c) => c.userNome === 'João Ninguém' && c.grupoAtual === 'CALMON'));
+  // insistir no botão não vira dez itens na fila
+  await req('POST', '/api/my/correcao-cadastro', { cookie: pc, body: { descricao: 'de novo' } });
+  ck('pedir de novo não duplica na fila',
+    J((await req('GET', '/api/admin/correcoes', { cookie: ac })).body).filter((c) => c.userNome === 'João Ninguém').length === 1);
+  await req('POST', '/api/admin/correcoes/' + J((await req('GET', '/api/admin/users', { cookie: ac })).body).find((u) => u.email === 'joao@local').id + '/resolver', { cookie: ac });
+  ck('resolver tira da fila', !J((await req('GET', '/api/admin/correcoes', { cookie: ac })).body).some((c) => c.userNome === 'João Ninguém'));
+
+  // ---- 2.5 (efeito colateral 3): admin corrige a autoria de uma foto ----
+  const paraCorrigir = J((await req('GET', '/api/admin/submissions?limit=200', { cookie: ac })).body).itens[0];
+  if (paraCorrigir) {
+    const semFlag = await req('PATCH', '/api/admin/submissions/' + paraCorrigir.id, { cookie: ac, body: { promotor: 'NAO DEVE MUDAR' } });
+    ck('trocar autor sem a flag explícita não muda nada', J(semFlag.body).promotor === paraCorrigir.promotor, J(semFlag.body).promotor);
+    const comFlag = await req('PATCH', '/api/admin/submissions/' + paraCorrigir.id, { cookie: ac, body: { promotor: 'SUPERVISOR CORRIGIU', permitirTrocarAutor: true } });
+    ck('admin corrige a autoria com a flag', J(comFlag.body).promotor === 'SUPERVISOR CORRIGIU', J(comFlag.body).error || '');
+    ck('correção de autoria fica na auditoria', J((await req('GET', '/api/admin/auditoria?acao=corrigiu_autoria_da_foto', { cookie: ac })).body).total >= 1);
+    await req('PATCH', '/api/admin/submissions/' + paraCorrigir.id, { cookie: ac, body: { promotor: paraCorrigir.promotor, permitirTrocarAutor: true } });
+  }
+
+  // ---- 2.4: URL do manifesto expira ----
+  const manExp = J((await req('GET', '/api/admin/download-manifest?onlyNew=0', { cookie: ac })).body);
+  if (manExp.items && manExp.items.length) {
+    ck('URL do manifesto tem expiração (não é link vitalício)', /expires_at=\d+/.test(manExp.items[0].url), manExp.items[0].url.slice(0, 80));
+  }
 
   // ---- recuperação de senha (link de redefinição) ----
   const fp = J((await req('POST', '/api/forgot-password', { body: { email: 'joao@local' } })).body);
