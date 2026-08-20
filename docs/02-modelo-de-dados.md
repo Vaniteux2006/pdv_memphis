@@ -9,59 +9,112 @@ para manter as URLs e o frontend estáveis.
 ```mermaid
 erDiagram
   USERS ||--o{ SUBMISSIONS : "envia (uploadedBy)"
+  USERS ||--o{ RETORNO : "recebe justificativa de recusa"
+  USERS ||--o| CORRECOES : "pede correção do cadastro"
+  USERS ||--o{ AUDITORIA : "gera evento sensível"
+  SUBMISSIONS ||--o| RANKING : "vira registro de pódio"
 
   USERS {
     string id PK "UUID"
-    string email
     string emailLower "indexado, único"
     string name
     string role "admin | promotor"
     string passwordHash "bcrypt"
     bool   active "false = banido"
-    bool   mustChangePassword "true = troca obrigatória no próximo login"
-    array  permissions "só admin: fotos|aprovar|contas|listas ou * (acesso total)"
-    string telefone "só dígitos (o front formata)"
+    bool   pendingApproval "veio do cadastro público"
+    bool   mustChangePassword
+    array  permissions "só admin: fotos|aprovar|contas|listas|aderencia ou *"
+    string telefone
     string grupo
     string regiao "NE|CN|SP|SE|SUL"
     string setor
-    int    matricula "único quando presente; 0 ou vazio = null (promotor não tem)"
-    string resetTokenHash "sha256 do token de redefinição (1h, uso único)"
-    string resetTokenExp "ISO"
+    int    matricula "único quando presente"
+    string aceiteVersao "versão da política aceita (ex: 2026-08)"
+    string aceiteEm "ISO"
+    string resetTokenHash "sha256 — reset (1h) ou convite (7 dias), uso único"
+    string conviteEnviadoEm "permite retomar o envio em massa"
     string createdAt "ISO"
   }
 
   SUBMISSIONS {
     string id PK "UUID"
-    array  imagens "1 ou 2 {storedFile, resourceType, originalName} — 2 = antes e depois"
-    string uploadedBy FK "USERS.id"
-    string uploadedByEmail
+    array  imagens "1 ou 2 — esvaziado na anonimização"
+    string uploadedBy FK "USERS.id — REMOVIDO aos 6 meses"
+    string uploadedByEmail "removido aos 2 meses"
+    string promotor "removido aos 2 meses"
+    string promotorNorm "chave de join E de contagem distinta"
     string cliente
-    string endereco
-    string regiao "NE|CN|SP|SE|SUL"
-    string promotor
-    string promotorNorm "normalizado"
-    string clienteNorm "normalizado"
-    string searchBlob "busca acento-insensível"
-    bool   promotorNoBanco
-    string grupo
+    string endereco "removido aos 2 meses (rastro de localização)"
+    string searchBlob "nome + endereço — removido aos 2 meses"
+    string regiao
+    string grupo "digitado no envio (histórico)"
+    string grupoOficial "CONGELADO antes de anonimizar"
     string dataExposicao "YYYY-MM-DD"
-    string semanaKey "semana ISO da exposição (limite 1/semana)"
-    string mesKey "mês da exposição (limite 4/mês)"
-    string senhaMensal "carimbada no envio"
-    string senhaSemanal "carimbada no envio"
+    string semanaKey "trava 1/semana"
+    string mesKey "trava 4/mês"
+    string senhaMensal "carimbada pelo servidor"
+    string senhaSemanal "carimbada pelo servidor"
     string preAvaliacao "REGULAR|BOM|EXCELENTE"
-    array  pontosExtra "lista"
+    array  pontosExtra "validado contra a lista vigente"
     bool   validado "true|false|null"
+    string motivoRecusa "obrigatório ao recusar"
+    string observacao "removido aos 6 meses"
     bool   pago
-    string observacao
     bool   baixado
-    string createdAt "ISO"
+    int    rankingPos "1|2|3 da edição"
+    string anonimizadaEm "ISO — carimbo da retenção"
+    string createdAt "ISO — RELÓGIO da retenção"
+  }
+
+  RETORNO {
+    string submissionId
+    string userId FK "USERS.id — indexado pelo USUÁRIO"
+    string semanaKey
+    string cliente
+    string motivoRecusa
+    string observacao
+    string criadoEm "ISO"
+  }
+
+  RANKING {
+    string mesKey "edição"
+    string escopo "NACIONAL ou sigla da região"
+    int    posicao "1|2|3 — único com mesKey+escopo"
+    string submissionId
+    string promotor "sobrevive à foto (quadro de honra)"
+    string grupo
+    string regiao
+    string cliente
+    string marcadoEm "ISO"
+  }
+
+  AUDITORIA {
+    date   ts "índice TTL: 12 meses"
+    string userId
+    string userNome
+    string userEmail
+    string acao
+    string alvo
+    int    qtd
+    string ip
+    string detalhe
+  }
+
+  CORRECOES {
+    string userId "1 pedido em aberto por pessoa"
+    string userNome
+    string grupoAtual
+    string regiaoAtual
+    string descricao "texto livre: só DESCREVE o erro"
+    bool   resolvido
+    string criadoEm "ISO"
   }
 
   PROMOTORES {
     string id PK "UUID"
     string nome
     string nomeNorm "indexado, único"
+    string grupo "denominador do % de participação"
   }
 
   PENDENTES {
@@ -69,22 +122,38 @@ erDiagram
     string tipo "promotor | grupo"
     string nome
     string nomeNorm "índice único composto com tipo"
-    string criadoPor "email do promotor"
+    string criadoPor
     string criadoEm "ISO"
   }
 
+  PRESENCA {
+    string _id "id do admin"
+    string nome
+    string subId "foto aberta agora"
+    date   ts "índice TTL: 2 minutos"
+  }
+
   REFDATA {
-    string _id "singleton"
+    string _id "singleton | participantes | backups"
     array  grupos
     array  clientes
+    array  pontosExtra
+    array  motivosRecusa
   }
 
   CONFIG {
     string _id "singleton"
     string senhaMensal
     string senhaSemanal
-    string crachaHash "sha256 do crachá de acesso total (o código não é guardado)"
-    string crachaGeradoEm "ISO"
+    array  senhasProgMensal "tabela programada por data"
+    array  senhasProgSemanal
+    string crachaHash "sha256 do crachá de acesso total"
+    string encarregadoEmail "LGPD — editável na aba Listas"
+    string contatoTelefone
+    string politicaVersao "muda = todo mundo aceita de novo"
+    string razaoSocial "exige acesso total"
+    string cnpj
+    string enderecoMatriz
   }
 ```
 
@@ -115,9 +184,14 @@ Cada **foto** enviada é um documento — e uma foto pode ter **1 ou 2 imagens**
 (`imagens[]`; 2 = "antes e depois"), mas conta como **1** para os limites.
 - `imagens[].storedFile` + `resourceType`: referência ao arquivo no Cloudinary
   (a foto não fica no Mongo). Registros antigos com `storedFile` único ainda são lidos
-  (fallback em `server.js`).
+  (fallback em `server.js`). A retenção **esvazia** este array ao apagar as imagens.
+- `promotor`, `regiao` e `grupo` são gravados **a partir da sessão** de quem envia, nunca do
+  corpo da requisição — ver [07 — Segurança](07-seguranca.md), Bloco 2.
+- `grupoOficial` e `anonimizadaEm`: campos da retenção — ver [09 — LGPD](09-lgpd.md).
 - `semanaKey` / `mesKey`: chaves da **data de exposição**, usadas nas travas de
-  **1 foto/semana** e **4 fotos/mês** por promotor.
+  **1 foto/semana** e **4 fotos/mês** por promotor. ⚠️ Foto **recusada não consome cota**
+  (a contagem filtra `validado ≠ false`); **pendente conta**, senão daria para encher a fila
+  enquanto ninguém avalia. Não confundir com o relógio da **retenção**, que é `createdAt`.
 - Campos `*Norm` e `searchBlob`: versões normalizadas (minúsculo, sem acento) para
   busca e checagem rápidas.
 - `senhaMensal` / `senhaSemanal`: **carimbadas pelo servidor** no momento do envio
@@ -126,14 +200,17 @@ Cada **foto** enviada é um documento — e uma foto pode ter **1 ou 2 imagens**
   entre si — ver ciclo de vida em [04 — Fluxos](04-fluxos-bpmn.md).
 
 ### `promotores`
-Banco oficial de nomes de promotores da empresa (~2.050). Usado para **checar** se quem
-envia existe no cadastro. Índice único em `nomeNorm` para lookup e autocomplete rápidos.
+Banco oficial de nomes da empresa (~2.050), cada um com o **grupo** a que pertence — é esse
+grupo que serve de **denominador do "% de participação"** na aderência.
+Índice único em `nomeNorm`. Desde o Bloco 2 a lista **não é mais servida ao promotor**: ele
+não digita o próprio nome, então não precisa (nem deve) ver os dos colegas.
 
 ### `pendentes`
-Nomes que aguardam **aprovação** da equipe — agora de dois tipos: `promotor`
-(cadastrado pelo promotor no envio) e `grupo` (grupo digitado que não está na lista
-oficial entra na fila automaticamente). Ao aprovar, o nome migra para `promotores`
-ou `refdata.grupos` conforme o tipo.
+Nomes que aguardam **aprovação** da equipe, de dois tipos: `promotor` e `grupo`.
+Ao aprovar, o nome migra para `promotores` ou `refdata.grupos` conforme o tipo.
+> Desde o Bloco 2 essa fila **não nasce mais do envio do promotor** — o nome dele vem da
+> sessão e o grupo, da conta. Continua como ferramenta da equipe (`POST /api/promotor-pendente`
+> exige permissão `listas`).
 
 ### `refdata` (documento único `singleton`)
 Listas editáveis: `grupos` e `clientes` (usadas em autocomplete e filtros).

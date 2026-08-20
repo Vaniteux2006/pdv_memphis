@@ -201,6 +201,9 @@ Solução adotada, com a divisão onde cada lado ganha o que precisa:
 | **Manifesto do ZIP** e **backup** | `private_download_url` com **1h** (testado: 200 dentro do prazo, **401** depois) | É aqui que mora o risco: o manifesto entrega centenas de links de uma vez, e é o que sobra salvo se vazar. Entrega o **original**, que é o que o acervo precisa. |
 | **Exibição na tela** (`/api/file/:id`) | URL assinada com `f_auto,q_auto` | Gerada a cada requisição, atrás de login, e usada na hora. Mantém a otimização que corta o peso da foto no celular — `private_download_url` não aceita transformação. |
 
+> 📋 O **registro de operações de tratamento** (campo × finalidade × base legal ×
+> retenção × quem acessa) está em [09 — LGPD](09-lgpd.md).
+
 ## Backup e reset de cadastros (LGPD 1.8)
 
 ⚠️ **O backup é dado pessoal** — não é um arquivo neutro, é a base inteira de pessoas.

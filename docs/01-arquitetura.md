@@ -64,37 +64,54 @@ flowchart TB
 
 ```
 TRABALHO/
-├─ server.js              Aplicação Express: rotas, auth, permissões, Excel
+├─ server.js              Aplicação Express: rotas, auth, permissões, retenção, Excel
 ├─ api/index.js           Entrypoint serverless (Vercel) — importa o app
+├─ discloud.config        Config do host Node persistente (Discloud) — alvo de produção
 ├─ lib/
 │  ├─ db.js               Regras de negócio + acesso ao MongoDB (assíncrono)
 │  ├─ mongo.js            Conexão única e cacheada com o Mongo
-│  ├─ storage.js          Cloudinary: upload assinado, URL de entrega, remoção
-│  ├─ mailer.js           Envio de email (link de redefinição de senha)
+│  ├─ storage.js          Cloudinary: upload assinado, URL de entrega e URL que expira
+│  ├─ mailer.js           Envio de email (redefinição de senha e convite de acesso)
 │  └─ cities.js           Lista de cidades (datalist)
-├─ public/
-│  ├─ index.html          Landing page (marketing interno)
-│  ├─ login.html          Identificação + "esqueci minha senha"
-│  ├─ promotor.html       Envio de fotos + acompanhamento (menu RCA: em breve)
-│  ├─ admin.html          Painel da equipe (abas por permissão)
-│  ├─ trocar-senha.html   Troca obrigatória de senha provisória (1º login)
-│  ├─ redefinir.html      Redefinição via link de email
-│  ├─ common.js           Helpers compartilhados (fetch, upload, toast)
-│  ├─ vendor/jszip.min.js ZIP no navegador
-│  └─ style.css           Tema Memphis (claro, teal)
+├─ public/                        ← servido na raiz; o hub vale para todos os módulos
+│  ├─ index.html                  Hub dos módulos (PDV ativo; PDP e RCA "em breve")
+│  ├─ 404.html                    Página de erro própria
+│  ├─ politica-de-privacidade.html  Política pública (legível ANTES do login)
+│  ├─ robots.txt                  Disallow: / — ferramenta interna, não indexável
+│  ├─ common.js                   Helpers compartilhados (fetch, upload, toast, esc)
+│  ├─ style.css                   Tema Memphis (claro, teal)
+│  ├─ vendor/jszip.min.js         ZIP montado no navegador
+│  ├─ pdv/                        ← módulo da Campanha de PDV
+│  │  ├─ index.html               Capa do módulo
+│  │  ├─ login.html               Identificação + "esqueci minha senha"
+│  │  ├─ cadastro.html            Cadastro público (com aceite da política)
+│  │  ├─ promotor.html            Envio de fotos + acompanhamento
+│  │  ├─ admin.html               Painel da equipe (abas por permissão)
+│  │  ├─ ranking.html             Pódios por edição (quadro de honra)
+│  │  ├─ aceitar-politica.html    Portão de aceite da LGPD
+│  │  ├─ trocar-senha.html        Troca obrigatória da senha provisória
+│  │  └─ redefinir.html           Redefinir senha E criar a primeira (modo convite)
+│  ├─ pdp/                        Pesquisa de Preço — em breve (pasta vazia)
+│  └─ rca/                        RCA — em breve (pasta vazia)
 ├─ data/
 │  └─ seed.json           Dados reais (promotores/grupos/clientes) p/ semear o Mongo
+├─ docs/
+│  ├─ 01..09-*.md         Esta documentação
+│  ├─ bpmn/*.bpmn         Processos em BPMN 2.0 — artefato NORMATIVO
+│  └─ PLANO.md            Plano de trabalho da reformulação (temporal)
 ├─ test/
-│  ├─ smoke.js            Regressão end-to-end (~56 verificações)
-│  ├─ pentest.js          Pentest do próprio app (38 verificações)
+│  ├─ smoke.js            Regressão end-to-end (~147 verificações)
+│  ├─ pentest.js          Pentest do próprio app (49 verificações)
+│  ├─ lgpd-portao.js      Portão do aceite (sobe servidor com LGPD_BLOQUEIA=1)
+│  ├─ retencao.js         Retenção e anonimização (envelhece fotos na marra)
+│  ├─ reset.js            Reset destrutivo, incl. o abort quando o backup falha
 │  └─ carga.js            Teste de carga (até 5.000 usuários simultâneos)
 ├─ tools/
 │  ├─ importar-planilhas.js  Gera o seed.json das planilhas .xlsx/.xlsm
-│  ├─ criar-promotores.js    Cria contas em massa via CLI (o painel também importa por planilha)
+│  ├─ criar-promotores.js    Cria contas em massa via CLI
+│  ├─ seed-teste.js          Popula o banco de teste com carga realista
+│  ├─ limpar-orfas.js        Remove imagens órfãs no Cloudinary
 │  └─ dev-preview.js         Sobe o servidor local sempre no banco de TESTE
-├─ vercel.json / .vercelignore   Empacote serverless (Vercel)
-├─ discloud.config               Config do host Node persistente (Discloud)
-└─ .env                   Segredos (MONGODB_URI, CLOUDINARY_*, SESSION_SECRET, SMTP_*)
 ```
 
 ## Princípios de arquitetura

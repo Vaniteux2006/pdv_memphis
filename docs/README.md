@@ -17,12 +17,13 @@ baixa em ZIP organizado por região e exporta para Excel no modelo das planilhas
 |-----|----------|
 | [01 — Arquitetura](01-arquitetura.md) | Componentes, stack, topologia, ciclo de uma requisição |
 | [02 — Modelo de Dados](02-modelo-de-dados.md) | Coleções MongoDB, diagrama ER, índices |
-| [03 — Referência da API](03-api.md) | Todos os 36 endpoints, autenticação, permissões, payloads |
+| [03 — Referência da API](03-api.md) | Todos os **70 endpoints**, autenticação, permissões, payloads |
 | [04 — Fluxos de Negócio (BPMN)](04-fluxos-bpmn.md) | Processo ponta-a-ponta, ciclo de vida da submissão |
 | [05 — Diagramas de Sequência (UML)](05-sequencia.md) | Login, upload direto, download ZIP, aprovação |
 | [06 — Estrutura de Código (UML)](06-uml-componentes.md) | Diagrama de classes/módulos |
 | [07 — Segurança](07-seguranca.md) | JWT, hashing, uploads assinados, entrega autenticada |
 | [08 — Deploy & Operação](08-deploy.md) | Plano Vercel, variáveis de ambiente, backup |
+| [09 — LGPD](09-lgpd.md) | **Registro de operações de tratamento** (ROPA): campo × finalidade × base legal × retenção × quem acessa |
 
 ## Resumo em 30 segundos
 

@@ -17,8 +17,13 @@ sequenceDiagram
     S-->>U: 200 { role, name, mustChangePassword } + Set-Cookie: mp_token (httpOnly)
   end
   Note over U,S: Se mustChangePassword=true, o front leva pra trocar-senha.html<br/>antes de liberar o app (senha provisória).
-  Note over U,S: Requisições seguintes mandam o cookie.<br/>requireAuth verifica o JWT e revalida 'active' no Mongo;<br/>rotas /api/admin/* ainda passam pelo requirePerm (permissão granular).
+  Note over U,S: Requisições seguintes mandam o cookie.<br/>requireAuth verifica o JWT e revalida 'active' no Mongo.<br/>Rotas /api/admin/* ainda passam pelo requirePerm (permissão granular).
 ```
+
+> **Nota (ago/2026):** as sequências abaixo refletem o comportamento atual. Duas mudanças
+> recentes que aparecem nelas: a URL entregue no **manifesto do ZIP expira em 1 hora**, e o
+> **primeiro acesso passa por convite** (a pessoa cria a própria senha) seguido do **aceite
+> da política**. Ver [07 — Segurança](07-seguranca.md) e [09 — LGPD](09-lgpd.md).
 
 ## Envio de foto (upload direto, assinado)
 

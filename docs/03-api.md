@@ -19,9 +19,9 @@ enviado automaticamente pelo navegador. Erros retornam `{ "error": "mensagem" }`
 
 | Método | Rota | Acesso | Corpo | Resposta |
 |--------|------|--------|-------|----------|
-| POST | `/api/login` | 🔓 | `{ email, password }` | `{ role, name, mustChangePassword }` + `Set-Cookie: mp_token` · 401 se inválido · **rate-limit** 10 falhas/15min (sucesso não conta) |
+| POST | `/api/login` | 🔓 | `{ email, password }` | `{ role, name, mustChangePassword, precisaAceitar }` + `Set-Cookie: mp_token` · 401 se inválido · **rate-limit** 10 falhas/15min (sucesso não conta) |
 | POST | `/api/logout` | 🔓 | — | `{ ok: true }` + limpa o cookie |
-| GET | `/api/me` | 🔑 | — | `{ id, email, name, role, mustChangePassword, grupo, regiao, telefone, setor, matricula, permissions }` |
+| GET | `/api/me` | 🔑 | — | `{ id, email, name, role, mustChangePassword, grupo, regiao, telefone, setor, matricula, permissions, aceiteVersao, precisaAceitar, politicaVersao }` |
 | POST | `/api/change-password` | 🔑 | `{ currentPassword, newPassword }` | Troca a **própria** senha (obrigatória no 1º login quando `mustChangePassword=true` — o front redireciona pra `trocar-senha.html`). Renova o token. |
 | POST | `/api/forgot-password` | 🔓 | `{ email }` | Sempre `{ ok: true }` (anti-enumeração). Gera token (hash + 1h) e **envia link** por email (`redefinir.html?token=`). Rate-limit 20/15min. Em dev sem SMTP devolve `devLink`. |
 | POST | `/api/reset-password` | 🔓 | `{ token, password }` | Redefine a senha se o token for válido/não expirado/uso único. 400 se inválido. |
@@ -37,35 +37,65 @@ enviado automaticamente pelo navegador. Erros retornam `{ "error": "mensagem" }`
 | GET | `/api/admin/auditoria` | 👑 `*` | Trilha de acesso a dado pessoal (Art. 37). Filtros `acao`, `userId`, `limit`, `skip`. **Só acesso total.** |
 | GET | `/api/contato` | — | Dados institucionais da LGPD (`razaoSocial`, `cnpj`, `enderecoMatriz`, `encarregadoEmail`, `contatoTelefone`, `politicaVersao`, `avisoTransicaoWhatsapp`). **Público de propósito:** a política precisa ser legível antes do login e o contato do encarregado é de divulgação obrigatória (Art. 41 §1º). |
 | PATCH | `/api/admin/institucionais` | 👑 `listas` | Edita os campos acima. Contato/versão exigem `listas`; `razaoSocial`, `cnpj` e `enderecoMatriz` exigem **acesso total** (`*`) — pedir sem ter dá **400**, não silêncio. |
-| GET | `/api/reference` | 🔑 | `{ regioes, pontosExtra, preAvaliacoes, cidades, grupos, clientes, promotores, limiteFotos, senhas }`. Servida de um **buffer pré-gzipado compartilhado** (maior payload do app). |
-| GET | `/api/check-promotor?nome=` | 🔑 | Checa o nome no banco: `{ existe, sugestoes:[...] }` |
+| GET | `/api/reference` | 🔑 | Maior payload do app, servido de **buffer pré-gzipado — um por perfil**. Admin recebe tudo; **promotor NÃO recebe `promotores[]` nem `grupos[]`** (Bloco 2: ninguém vê o nome de ninguém). |
+| GET | `/api/check-promotor?nome=` | 👑 `listas` | Checa o nome no banco: `{ existe, sugestoes:[...] }`. **Passou a exigir admin** — era o vazamento mais direto de nomes de colegas. |
 | GET | `/api/upload-signature?tipo=fotos` | 🔑 | Assinatura p/ upload direto no Cloudinary: `{ signature, timestamp, apiKey, cloudName, folder, type }` |
+
+## Cadastro público (sign up)
+
+| Método | Rota | Acesso | Corpo | Descrição |
+|--------|------|--------|-------|-----------|
+| GET | `/api/signup-info` | 🔓 | — | Constantes que a tela de cadastro precisa antes do login: `{ regioes }`. |
+| POST | `/api/signup` | 🔓 | `{ name, email, password, telefone?, grupo?, regiao?, aceitePolitica }` | Cria conta de **promotor aguardando aprovação**. **`aceitePolitica` é validado no servidor** — marcar a caixa no front não prova nada. Rate-limit 20/h por IP. |
+| GET | `/api/admin/signup-count` | 👑 `contas` | — | Só a contagem de cadastros pendentes, para o badge do painel. |
 
 ## Envio e consulta de fotos
 
 | Método | Rota | Acesso | Corpo / Query | Descrição |
 |--------|------|--------|---------------|-----------|
-| POST | `/api/submissions` | 🔑 | `{ cliente, endereco, dataExposicao, regiao, grupo, promotor, fotos:[{publicId,resourceType,originalName}] }` | Registra **1 foto** (= 1 ou **2 imagens**, "antes e depois"), já enviadas ao Cloudinary. Valida campos, prefixo da pasta e os **limites por promotor: 1 foto/semana e 4/mês** (pela data da exposição). Grupo que não está na lista oficial entra na fila de aprovação. |
+| POST | `/api/submissions` | 🔑 | `{ cliente, endereco, dataExposicao, fotos:[{publicId,resourceType,originalName}] }` | Registra **1 foto** (= 1 ou **2 imagens**, "antes e depois"), já enviadas ao Cloudinary. ⚠️ **`promotor`, `regiao` e `grupo` vêm da SESSÃO** — o que vier no corpo é ignorado (Bloco 2). Valida campos, prefixo da pasta e os **limites: 1 foto/semana e 4/mês** por pessoa (pela data da exposição). Conta sem região é recusada, com instrução de falar com a equipe. |
 | GET | `/api/my/submissions` | 🔑 | — | Fotos do próprio promotor logado. |
 | GET | `/api/admin/submissions` | 👑 `fotos` | `?q=&regiao=&grupo=&status=` | Lista/busca todas. `status`: `novos\|baixados\|validados\|recusados`. |
 | PATCH | `/api/admin/submissions/:id` | 👑 `fotos` | `{ preAvaliacao?, pontosExtra?, validado?, motivoRecusa?, pago?, observacao?, baixado? }` | Avalia/atualiza a foto (só campos da lista branca). `pontosExtra` é validado contra a lista vigente. **`validado: false` exige `motivoRecusa`** (400 sem ele) — o promotor lê esse motivo. |
 | DELETE | `/api/admin/submissions/:id` | 👑 `fotos` | — | **Exclui a foto de vez** (Mongo + todas as imagens no Cloudinary). |
-| GET | `/api/file/:id/:idx?` | 🔑 | — | **302** → URL assinada da imagem no Cloudinary. `:idx` escolhe a imagem (0 ou 1, p/ "antes e depois"). Promotor só acessa as próprias. |
+| GET | `/api/file/:id/:idx?` | 🔑 | — | **302** → URL assinada da imagem, com `f_auto,q_auto` (versão leve para a tela). `:idx` escolhe a imagem (0 ou 1, p/ "antes e depois"). Promotor só acessa as próprias; foto de pódio é visível a qualquer logado. |
+
+### Do próprio promotor
+
+| Método | Rota | Acesso | Descrição |
+|--------|------|--------|-----------|
+| GET | `/api/my/retornos` | 🔑 | Histórico de **recusas** da pessoa. Vive em coleção própria: a submissão é anonimizada aos 2 meses, mas a justificativa continua acessível **enquanto a conta existir** (Art. 15). |
+| POST | `/api/my/correcao-cadastro` | 🔑 | `{ descricao }` — abre pedido de **correção de cadastro**. O promotor não digita mais nome/grupo/região, então precisa de um caminho para avisar quando estiverem errados. Um pedido em aberto por pessoa. |
 
 ## Exportação (ZIP no navegador + Excel)
 
 | Método | Rota | Acesso | Descrição |
 |--------|------|--------|-----------|
-| GET | `/api/admin/download-manifest?onlyNew=1` | 👑 `fotos` | Manifesto do ZIP: `{ items:[{ id, idx, url assinada, path }], count }` com caminhos `Região/REF - Cliente - Promotor/foto.jpg`. **O ZIP é montado no navegador** (JSZip) — recusadas (`validado===false`) ficam de fora. `onlyNew=0` = tudo. |
+| GET | `/api/admin/download-manifest?onlyNew=1` | 👑 `fotos` | Manifesto do ZIP: `{ items:[{ id, idx, url que **expira em 1h**, path }], count }` com caminhos `Região/REF - Cliente - Promotor/foto.jpg`. **O ZIP é montado no navegador** (JSZip) — recusadas (`validado===false`) ficam de fora. `onlyNew=0` = tudo. |
 | POST | `/api/admin/mark-downloaded` | 👑 `fotos` | `{ ids }` — o navegador chama **depois** de concluir o ZIP; marca `baixado=true`. |
 | GET | `/api/admin/export.xlsx` | 👑 `fotos` | **Excel gerado do zero no molde oficial** — uma aba por região, bloco-resumo com fórmulas (`COUNTIFS`), colunas do modelo (Seq, REF, COLAR EM PASTAS, Semanas…). Aceita os mesmos filtros de busca. |
 | POST | `/api/admin/purge` | 👑 `fotos` | Apaga **definitivamente** as já baixadas (Mongo + Cloudinary): `{ removed }`. |
+
+## Ranking e presença
+
+| Método | Rota | Acesso | Corpo | Descrição |
+|--------|------|--------|-------|-----------|
+| GET | `/api/ranking` | 🔑 | — | Pódios por edição. ⚠️ **Exceção deliberada** ao "ninguém vê o nome de ninguém": mostra o **nome completo** dos vencedores a todos os logados — premiação divulgada é finalidade própria, e está declarado na política. Cada item traz `temFoto`: `false` = edição passada cuja imagem já expirou, e a página cai no **quadro de honra em texto** em vez de mostrar imagem quebrada. |
+| POST | `/api/admin/ranking` | 👑 `fotos` | `{ id, pos }` | Marca 1º/2º/3º da edição (só foto aprovada com nota EXCELENTE). **Grava o registro do pódio na hora da marcação** — é o que sobrevive à retenção da foto. `pos` vazio desmarca. |
+| POST | `/api/admin/presenca` | 👑 `fotos` | `{ subId }` | "Estou nesta foto agora" → devolve em quais fotos os **outros** admins estão. Só avisa, não reserva. |
 
 ## Aderência (números de participação da campanha)
 
 | Método | Rota | Acesso | Query | Descrição |
 |--------|------|--------|-------|-----------|
 | GET | `/api/admin/aderencia` | 👑 `aderencia` | `?de=YYYY-MM-DD&ate=YYYY-MM-DD` | Consolidado do período (padrão: **últimos 3 meses** até hoje), pela **data da exposição**. Conta **promotores distintos** (`promotorNorm`), não fotos: `{ periodo, base:{ banco, contasAtivas }, promotores:{ participantes, comFotoValidada, pagos }, fotos:{ total, validadas, recusadas, pendentes, pagas, semGrupo }, regioes:[…], grupos:[…] }`. `regioes`/`grupos` vêm ordenados por nº de promotores — o 1º é o "mais ativo". Agregação no Mongo (`$group` duplo), sem trafegar as fotos. |
+
+### Gráficos e alertas
+
+| Método | Rota | Acesso | Query | Descrição |
+|--------|------|--------|-------|-----------|
+| GET | `/api/admin/series` | 👑 `aderencia` | `?de=&ate=` | Séries temporais dos gráficos (envios por período, por região/grupo). |
+| GET | `/api/admin/alertas` | 👑 `fotos` | — | **Escalonamento de fotos paradas** + cadastros pendentes **numa requisição só**: `{ naoAvaliadas, naoBaixadas, destaque, critico, ultima, aExpirar, dias:{30,45,53}, cadastrosPendentes, retencaoDias, apagando }`. Funde o antigo `signup-count` de propósito — somar outro polling de 10s bateria onde o gargalo já mora (Atlas M0). |
 
 ## Pendentes (aprovação de promotor **e grupo**)
 
@@ -90,6 +120,13 @@ enviado automaticamente pelo navegador. Erros retornam `{ "error": "mensagem" }`
 | POST | `/api/admin/users/:id/active` | 👑 `contas` | `{ active }` | **Banir** (`false`) / desbanir (`true`). Bloqueado p/ admin. |
 | DELETE | `/api/admin/users/:id` | 👑 `contas` | — | Exclui a conta. Bloqueado p/ admin. |
 
+### Correções de cadastro
+
+| Método | Rota | Acesso | Descrição |
+|--------|------|--------|-----------|
+| GET | `/api/admin/correcoes` | 👑 `contas` | Fila de pedidos em aberto, com o cadastro atual da pessoa ao lado do que ela relatou. |
+| POST | `/api/admin/correcoes/:id/resolver` | 👑 `contas` | Marca como resolvido (`:id` = id do usuário). |
+
 ## Crachá de acesso total
 
 | Método | Rota | Acesso | Corpo | Descrição |
@@ -104,6 +141,24 @@ enviado automaticamente pelo navegador. Erros retornam `{ "error": "mensagem" }`
 | PATCH | `/api/admin/config` | 👑 `listas` | `{ senhaMensal?, senhaSemanal? }` | Define as senhas atuais (o que o promotor vê). |
 | POST | `/api/admin/ref/:type` | 👑 `listas` | `{ value }` | Adiciona item. `type`: `grupos\|clientes\|promotores`. |
 | DELETE | `/api/admin/ref/:type` | 👑 `listas` | `{ value }` | Remove item. |
+| GET | `/api/admin/ref/promotores` | 👑 `listas` | `?q=&limit=` | Banco de promotores **paginado**, com o grupo de cada um: `{ promotores, total, semGrupo }`. |
+| DELETE | `/api/admin/ref/promotores/tudo` | 👑 `listas` | — | Zera o banco de nomes (a tela baixa um `.csv` de backup antes). |
+| POST | `/api/admin/ref/import` | 👑 `listas` | `{ file }` (xlsx base64) | Importa **grupos e promotores** em massa. Só adiciona; a única coisa que atualiza é o **grupo do promotor**. |
+| GET | `/api/admin/ref/import-template.xlsx` | 👑 `listas` | — | Modelo protegido para o import acima. |
+| GET | `/api/admin/senhas` | 👑 `listas` | — | Senhas **programadas por data**: `{ hoje, mensal[], semanal[], vigentes }`. O servidor escolhe a vigente sozinho (fuso de Brasília). |
+| POST | `/api/admin/senhas` | 👑 `listas` | `{ tipo, inicio, senha }` | Programa uma senha a partir de uma data. Repetir a data substitui. |
+| DELETE | `/api/admin/senhas` | 👑 `listas` | `{ tipo, inicio }` | Remove uma entrada programada. |
+| POST | `/api/admin/senhas/import` | 👑 `listas` | `{ file }` (xlsx base64) | Lê a planilha "LISTA DE SENHAS SEMANAIS" da equipe e programa tudo de uma vez. |
+
+## LGPD: retenção, backup e reset
+
+| Método | Rota | Acesso | Corpo | Descrição |
+|--------|------|--------|-------|-----------|
+| POST | `/api/admin/retencao/rodar` | 🪪 | — | Roda a retenção **sob demanda** para conferir a lista (checkpoint D3): `{ modo, candidatas, amostra, ... }`. Em **modo só-relatório** (padrão) não apaga nada — ligar exige `RETENCAO_APAGA=1`. Também roda sozinha 1×/dia. |
+| POST | `/api/admin/backup` | 🪪 | — | Dump de `users`, `promotores`, `refdata` e `config` como arquivo `raw` autenticado. ⚠️ **É dado pessoal** — retenção declarada de 5 meses. |
+| GET | `/api/admin/backup` | 🪪 | — | `{ itens, retencaoDias }`. |
+| GET | `/api/admin/backup/baixar?arquivo=` | 🪪 | — | **302** → URL que **expira**. Sem caminho de volta, "ter backup" seria teatro. |
+| POST | `/api/admin/reset-cadastros` | 🪪 | `{ confirmacao: "RESETAR" }` | **A ação mais destrutiva do sistema.** Exige crachá + a palavra digitada + **backup obrigatório antes**; se o backup falhar, **aborta** (500) sem apagar nada. Nunca apaga quem executou nem outros admins. Tudo na auditoria. |
 
 ## Códigos de status
 
