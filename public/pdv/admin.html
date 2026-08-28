@@ -503,6 +503,10 @@
 
     // sub-abas da aba Fotos: A avaliar (galeria foto-a-foto) / Aprovadas / Recusadas
     let fotoView = 'pendentes', subsCache = [], galIdx = 0, galId = null;
+    // foto com o seletor de motivo aberto: recusar É escolher o motivo, não um passo depois dele.
+    // `trocandoId` é o mesmo seletor numa foto JÁ recusada — fechado por padrão, porque com 15
+    // motivos na lista os botões sozinhos ocupavam metade do card na sub-aba Recusadas.
+    let recusandoId = null, trocandoId = null;
     const estadoDe = (s) => (s.validado === true ? 'aprovadas' : s.validado === false ? 'recusadas' : 'pendentes');
     document.getElementById('f-ordem').onclick = () => {
       filaAntigas = !filaAntigas;
@@ -519,7 +523,7 @@
       });
       // cada sub-aba é uma consulta própria ao servidor agora (antes tudo vinha junto
       // e a troca era só um filtro no navegador)
-      galId = null; galIdx = 0; subsCache = [];
+      galId = null; galIdx = 0; subsCache = []; recusandoId = null; trocandoId = null;
       loadPhotos().catch((e) => toast(e.message, 'bad'));
     }));
     document.getElementById('btn-mais').onclick = () => loadPhotos({ mais: true }).catch((e) => toast(e.message, 'bad'));
@@ -742,6 +746,7 @@
         if (novo >= pendentesAtuais().length) return;
       }
       galIdx = novo; galId = pendentesAtuais()[novo].id;
+      recusandoId = null; trocandoId = null; // trocou de foto: não carrega o seletor de motivo pra próxima
       renderFotos();
       pingPresenca(); // troquei de foto: os outros admins veem isso já no próximo ciclo deles
     }
@@ -758,15 +763,33 @@
     const pontosDaFoto = (s) => [...new Set([...ref.pontosExtra, ...(s.pontosExtra || [])])];
     // mesma ideia pro motivo de recusa: motivo tirado da lista continua aparecendo na foto que o tem
     const motivosDaFoto = (s) => [...new Set([...(ref.motivosRecusa || []), ...(s.motivoRecusa ? [s.motivoRecusa] : [])])];
-    // Os botões de motivo só aparecem quando a foto está recusada — antes disso não há o que explicar.
+    // O servidor exige motivo pra recusar, então o seletor precisa aparecer em DOIS momentos:
+    // na foto já recusada (pra trocar o motivo) e no clique em "Recusar" de uma foto pendente.
+    // Só o primeiro existia — e como nenhuma foto chegava a "recusada" sem motivo, os botões
+    // nunca apareciam e recusar era impossível.
     function motivosHTML(s, tam) {
-      if (s.validado !== false) return '';
+      const recusada = s.validado === false;
+      const escolhendo = recusandoId === s.id && !recusada;
+      const trocando = trocandoId === s.id && recusada;
+      if (!recusada && !escolhendo) return '';
+      // foto já recusada e ninguém mexendo: o que interessa é QUAL motivo ela levou, não a lista
+      if (recusada && !trocando) {
+        return `<label>Motivo da recusa</label>
+          <div class="toggles">
+            <span class="pill" style="background:var(--red);color:#fff;border-color:transparent;">${esc(s.motivoRecusa || '— sem motivo')}</span>
+            <button class="ghost" style="font-size:${tam}px;" data-act="trocar-motivo" data-id="${esc(s.id)}">trocar</button>
+          </div>`;
+      }
       const btns = motivosDaFoto(s).map((m) => {
         const on = s.motivoRecusa === m;
         return `<button class="${on ? 'danger' : 'ghost'}" style="font-size:${tam}px;" data-act="set-motivo" data-id="${esc(s.id)}" data-motivo="${esc(m)}" data-on="${on ? 1 : 0}">${esc(m)}</button>`;
-      }).join('');
-      return `<label>Motivo da recusa${s.motivoRecusa ? '' : ' <span style="color:var(--red)">— escolha um</span>'}</label>
-        <div class="toggles">${btns}</div>`;
+      }).join('')
+        || `<span class="muted" style="font-size:${tam}px;">Nenhum motivo cadastrado — crie um na aba Listas.</span>`;
+      const rotulo = escolhendo
+        ? 'Por que está recusando? <span style="color:var(--red)">— escolha um e a foto é recusada</span>'
+        : 'Trocar o motivo';
+      return `<label>${rotulo}</label>
+        <div class="toggles">${btns}<button class="ghost" style="font-size:${tam}px;" data-act="cancel-recusa">cancelar</button></div>`;
     }
     function photoCard(s) {
       const pontos = pontosDaFoto(s).map((p) => {
@@ -828,6 +851,17 @@
         if (s) tiraDaView(s);
       }
       renderFotos(); // o cache já está em dia; o polling de 10s sincroniza o resto
+    }
+    // recusa e motivo no MESMO patch: o servidor exige os dois juntos, e assim não existe o
+    // estado intermediário de "recusada sem motivo" que a Aderência precisa contar como buraco
+    async function recusarCom(id, motivo) {
+      await api('/api/admin/submissions/' + id, { method: 'PATCH', body: JSON.stringify({ validado: false, motivoRecusa: motivo }) });
+      const s = subsCache.find((x) => x.id === id);
+      if (s) { s.validado = false; s.motivoRecusa = motivo; }
+      recusandoId = null;
+      toast('Foto recusada — ' + motivo, 'bad');
+      if (s) tiraDaView(s);
+      renderFotos();
     }
     // remove do cache a foto que deixou de pertencer à sub-aba aberta e acerta os contadores
     // na hora (o polling de 10s reconfere com o servidor depois)
@@ -1849,15 +1883,28 @@
           if (d.val === '1') {
             if (s && !s.preAvaliacao && !confirm('Aprovar sem pré-avaliação (Regular/Bom/Excelente)?')) return;
           } else if (s && !String(s.motivoRecusa || '').trim()) {
-            // o promotor vê o motivo na tela dele — recusar sem escolher um deixaria só
-            // "Recusada" e nenhuma explicação. O servidor barra de qualquer forma; avisar
-            // aqui evita o erro genérico e diz o que fazer.
-            toast('Escolha o motivo antes de recusar — é o que o promotor vai ler.', 'bad');
+            // o promotor vê o motivo na tela dele, e o servidor não aceita recusa sem um.
+            // Em vez de mandar um PATCH que vai voltar 400, abre a lista de motivos aqui:
+            // o clique no motivo é que conclui a recusa.
+            recusandoId = s.id;
+            renderFotos();
             return;
           }
           return setField(d.id, 'validado', d.val === '1');
         }
-        case 'set-motivo': return setField(d.id, 'motivoRecusa', d.on === '1' ? '' : d.motivo); // clicar de novo desmarca
+        case 'trocar-motivo': { trocandoId = d.id; return renderFotos(); }
+        case 'cancel-recusa': { recusandoId = null; trocandoId = null; return renderFotos(); }
+        case 'set-motivo': {
+          const s = subsCache.find((x) => x.id === d.id);
+          // seletor aberto numa foto pendente: escolher o motivo recusa a foto de uma vez
+          if (recusandoId === d.id && s && s.validado !== false)
+            return recusarCom(d.id, d.motivo).catch((err) => toast(err.message, 'bad'));
+          // foto já recusada: dá pra trocar de motivo, mas não pra deixá-la sem nenhum —
+          // limpar aqui a devolveria ao buraco que o servidor barra na recusa
+          if (d.on === '1') return;
+          trocandoId = null; // escolheu: fecha a lista de volta na pílula
+          return setField(d.id, 'motivoRecusa', d.motivo);
+        }
         case 'set-pago': return setField(d.id, 'pago', d.val === '1');
         case 'del-photo': return delPhoto(d.id);
         case 'toggle-ban': return toggleBan(d.id, d.nome, d.banido === '1');

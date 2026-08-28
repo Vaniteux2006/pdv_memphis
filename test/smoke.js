@@ -203,9 +203,9 @@ async function uploadCloud(cookie, tipo, file, filename, ct) {
   // recusar sem motivo não passa mais — o promotor vê o motivo, então "Recusada" sozinho seria a queixa antiga
   const semMotivo = await req('PATCH', '/api/admin/submissions/' + subR.id, { cookie: ac, body: { validado: false } });
   ck('recusar sem motivo é recusado (400)', semMotivo.status === 400 && /motivo/i.test(J(semMotivo.body).error || ''), J(semMotivo.body).error || '');
-  const comMotivo = await req('PATCH', '/api/admin/submissions/' + subR.id, { cookie: ac, body: { validado: false, motivoRecusa: 'Foto fora de foco' } });
-  ck('recusar com motivo grava o motivo', comMotivo.status === 200 && J(comMotivo.body).motivoRecusa === 'Foto fora de foco', J(comMotivo.body).error || '');
-  ck('promotor enxerga o motivo da recusa', J((await req('GET', '/api/my/submissions', { cookie: pc })).body).find((x) => x.id === subR.id).motivoRecusa === 'Foto fora de foco');
+  const comMotivo = await req('PATCH', '/api/admin/submissions/' + subR.id, { cookie: ac, body: { validado: false, motivoRecusa: 'Sem senha, ou senha ilegível' } });
+  ck('recusar com motivo grava o motivo', comMotivo.status === 200 && J(comMotivo.body).motivoRecusa === 'Sem senha, ou senha ilegível', J(comMotivo.body).error || '');
+  ck('promotor enxerga o motivo da recusa', J((await req('GET', '/api/my/submissions', { cookie: pc })).body).find((x) => x.id === subR.id).motivoRecusa === 'Sem senha, ou senha ilegível');
   const manR = J((await req('GET', '/api/admin/download-manifest?onlyNew=0', { cookie: ac })).body);
   ck('foto recusada não entra no download', manR.count === 0 && manR.items.every((i) => i.id !== subR.id), 'count=' + manR.count);
   // ao validar, volta a ser baixável
@@ -314,11 +314,11 @@ async function uploadCloud(cookie, tipo, file, filename, ct) {
   const bloq = await req('POST', '/api/submissions', { cookie: pc, body: { cliente: 'COTA B', endereco: 'X', dataExposicao: '2026-05-05', fotos: [await uploadCloud(pc, 'fotos', jpeg, 'cota2.jpg', 'image/jpeg')] } });
   ck('2ª na mesma semana é barrada', bloq.status === 400 && /semana/i.test(J(bloq.body).error));
   const idCota = J((await req('GET', '/api/admin/submissions?q=' + encodeURIComponent('COTA A'), { cookie: ac })).body).itens[0].id;
-  await req('PATCH', '/api/admin/submissions/' + idCota, { cookie: ac, body: { validado: false, motivoRecusa: 'Foto fora de foco' } });
+  await req('PATCH', '/api/admin/submissions/' + idCota, { cookie: ac, body: { validado: false, motivoRecusa: 'Sem senha, ou senha ilegível' } });
   const reenvio = await req('POST', '/api/submissions', { cookie: pc, body: { cliente: 'COTA C', endereco: 'X', dataExposicao: '2026-05-06', fotos: [await uploadCloud(pc, 'fotos', jpeg, 'cota3.jpg', 'image/jpeg')] } });
   ck('recusar devolve a vaga na hora (recusada não consome cota)', reenvio.status === 200, J(reenvio.body).error || '');
   // o retorno da recusa fica numa coleção própria, que sobrevive à anonimização da foto
-  ck('promotor lê o retorno da recusa', J((await req('GET', '/api/my/retornos', { cookie: pc })).body).some((r) => r.motivoRecusa === 'Foto fora de foco'));
+  ck('promotor lê o retorno da recusa', J((await req('GET', '/api/my/retornos', { cookie: pc })).body).some((r) => r.motivoRecusa === 'Sem senha, ou senha ilegível'));
 
   // alertas: uma requisição só, com os cadastros pendentes junto (não somar polling no M0)
   const al = J((await req('GET', '/api/admin/alertas', { cookie: ac })).body);

@@ -488,6 +488,58 @@ button.modal-close:hover { background: rgba(255, 255, 255, .28); }
 .lp-footer .fbrand { font-family: Arial, Helvetica, sans-serif; font-size: 22px; font-weight: 700; color: #fff; letter-spacing: .5px; margin-bottom: 6px; }
 .lp-footer a { color: #fff; }
 
+/* ---------- guia da campanha (abas da página de introdução) ---------- */
+/* Regra em aba, e não numa página longa: o promotor abre isto no celular dentro da loja
+   e precisa cair direto na dúvida dele — não rolar seis telas até achar a regra. */
+.guia { max-width: 900px; margin: 0 auto; }
+.guia-tabs { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-bottom: 24px; }
+.guia-tabs button {
+  background: #fff; color: var(--muted); border: 1px solid var(--line);
+  border-radius: 999px; padding: 9px 16px; box-shadow: var(--shadow-sm);
+}
+.guia-tabs button:hover[aria-selected="false"] { background: var(--bg-soft); color: var(--ink); }
+.guia-tabs button[aria-selected="true"] { background: var(--teal); color: #fff; border-color: transparent; }
+
+.guia-panel {
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 28px 26px; box-shadow: var(--shadow-sm); animation: fadein .2s ease both;
+}
+.guia-panel[hidden] { display: none; }
+.guia-panel h3 { margin: 0 0 6px; font-size: 17px; color: var(--ink); }
+.guia-panel h3 + .sub { text-align: left; margin: 0 0 22px; }
+
+/* item numerado: o número à esquerda, o texto à direita */
+.guia-lista { display: grid; gap: 16px; }
+.guia-item { display: flex; gap: 14px; align-items: flex-start; }
+.guia-item .n {
+  flex: 0 0 30px; height: 30px; border-radius: 50%;
+  background: var(--teal-soft); color: var(--teal-dark);
+  display: grid; place-items: center; font-weight: 700; font-size: 13px;
+}
+.guia-item h4 { margin: 4px 0 5px; font-size: 14px; color: var(--ink); }
+.guia-item p { margin: 0; font-size: 13.5px; color: var(--muted); }
+
+/* cartões: prêmios, formatos de ponto extra e motivos de reprovação */
+.guia-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+.guia-card { background: var(--bg-soft); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 18px 16px; }
+.guia-card h4 { margin: 0 0 6px; font-size: 14px; color: var(--ink); }
+.guia-card .valor { font-size: 21px; font-weight: 700; color: var(--teal-dark); line-height: 1.2; margin-bottom: 6px; }
+.guia-card p { margin: 0; font-size: 13px; color: var(--muted); }
+.guia-card ul { margin: 8px 0 0; padding-left: 18px; font-size: 12.5px; color: var(--muted); line-height: 1.7; }
+.guia-card.ruim { background: rgba(217, 83, 79, .06); border-color: rgba(217, 83, 79, .28); }
+.guia-card.ruim h4 { color: var(--red); }
+
+.guia-nota {
+  margin-top: 22px; padding: 14px 16px; border-radius: var(--radius-sm);
+  background: var(--teal-soft); color: var(--teal-dark); font-size: 13.5px; line-height: 1.6;
+}
+.guia-nota.alerta { background: rgba(230, 180, 0, .14); color: var(--amber); }
+
+/* checklist: troca o marcador da lista pelo ✓ */
+.guia-check { list-style: none; margin: 0; padding: 0; display: grid; gap: 11px; }
+.guia-check li { display: flex; gap: 10px; font-size: 13.5px; color: var(--txt); }
+.guia-check li::before { content: "✓"; color: var(--green); font-weight: 700; }
+
 /* ---------- celular ---------- */
 @media (max-width: 640px) {
   /* Hero enxuto no celular: o público abre isto num Android de entrada (~640px de altura),
@@ -498,6 +550,11 @@ button.modal-close:hover { background: rgba(255, 255, 255, .28); }
   .lp-hero p { font-size: 16px; margin-bottom: 18px; }
   .lp-section { padding-top: 32px; }
   .btn-cta.outline { margin-left: 0; margin-top: 12px; }
+
+  /* abas do guia: rolam na horizontal em vez de quebrar em quatro linhas */
+  .guia-tabs { flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start; padding-bottom: 4px; }
+  .guia-tabs button { flex: 0 0 auto; padding: 8px 13px; font-size: 12.5px; }
+  .guia-panel { padding: 20px 16px; }
 
   .topbar, .site-header { padding: 10px 14px; }
   .brand-logo { height: 38px; }

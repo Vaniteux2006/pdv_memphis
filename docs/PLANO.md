@@ -211,7 +211,7 @@ deixa de ser opcional, marcado na coluna "Quando".
 |---|---|---|
 | ~~A1~~ | ✅ **Resolvida:** endereço da matriz — **Av. João Elustondo Filho, 175** | — |
 | ~~A2~~ | ✅ **Resolvida:** suporte e encarregado usam **o mesmo e-mail** | — |
-| A3 | A **lista de motivos de recusa** (`MOTIVOS_RECUSA` em `lib/db.js`) cobre os casos reais? Ela vira **obrigatória** ao recusar — se estiver incompleta, a equipe fica presa em "Outro" | Antes de ligar a obrigatoriedade (1.5.2) |
+| ~~A3~~ | ✅ **Resolvida:** `MOTIVOS_RECUSA` passou a ser os **14 motivos do capítulo 10 do Manual de Execução de PDV** (D1–D14), na ordem do manual, mais o escape "Outros". A lista do manual é fechada; "Outros" ficou por decisão da coordenação, pra ninguém travar no meio de um lote | — |
 | A4 | **Serviço transacional de e-mail** — em aberto, o dono não decidiu. Tratar via o telefone de contato quando chegar a hora do 1.7.2 | Antes do disparo em massa |
 | ~~A5~~ | ✅ **Resolvida:** `inteligencia.mecado@gmail.com` (sem o `r` de propósito) | — |
 | ~~A6~~ | ✅ **Resolvida:** foto recusada **NÃO** consome cota — na prática é como se não tivesse enviado nada. Ver 1.5.2 | — |

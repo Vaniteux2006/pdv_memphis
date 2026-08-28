@@ -39,7 +39,7 @@ const diasAtras = (n) => new Date(Date.now() - n * 864e5).toISOString();
   const velha = await mk(70);                 // passou dos 2 meses
   const nova = await mk(5);                   // recente
   const recusada = await mk(80);
-  await db.updateSubmission(recusada.id, { validado: false, motivoRecusa: 'Foto fora de foco', observacao: 'canto escuro' });
+  await db.updateSubmission(recusada.id, { validado: false, motivoRecusa: 'Sem senha, ou senha ilegível', observacao: 'canto escuro' });
   const vencedora = await mk(75);
   await db.updateSubmission(vencedora.id, { validado: true, preAvaliacao: 'EXCELENTE' });
   await db.setRanking(vencedora.id, 1);
