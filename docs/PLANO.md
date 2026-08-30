@@ -4,10 +4,13 @@
 > **05/ago/2026** (organização de dados · LGPD · UML/BPMN) e morre quando os
 > blocos forem concluídos e absorvidos pelos docs `01`–`09`.
 >
-> Estado (28/ago/2026): **Blocos 0, 1, 2, 3 e a fase 1 do 4 executados.**
-> Falta: **Bloco 4 fases 2–3** (só depois do piloto estável, por decisão do próprio
-> plano) e o **Bloco 5** (capa), que é independente e ainda precisa de uma decisão de
-> escopo — só a capa, ou `login.html` e `promotor.html` também.
+> Estado (30/ago/2026): **Blocos 0, 1, 2, 3, a fase 1 do 4 e o Bloco 5 executados.**
+> Falta só o **Bloco 4 fases 2–3** (converter para `.ts`), parado por decisão do próprio
+> plano: só depois do piloto estável.
+>
+> O Bloco 5 entregou o **alvo mínimo** — `public/index.html` + `public/style.css`. A
+> pergunta de escopo que a seção marca com ⚠️ (se `login.html` e `promotor.html`
+> acompanham) **continua aberta** e é decisão do dono.
 
 ---
 
@@ -1350,6 +1353,55 @@ próxima à da Apple.
 `promotor.html` acompanham — "ao menos a capa" sugere que o resto é bem-vindo, mas
 não foi pedido.
 
+> ✅ **FEITO (30/ago/2026) — alvo mínimo.** A pergunta acima **segue aberta**: só a capa
+> mudou. `login.html` e `promotor.html` estão como estavam.
+>
+> **Como o escopo foi contido.** `.theme-dark` está só no `public/index.html`, então virou
+> o gancho: **todo** o CSS novo está preso a ele. Isso importa porque `.lp-*` e `.hub-*`
+> são compartilhados com `pdv/`, `pdp/` e `rca/` — sem o escopo, redesenhar a capa
+> redesenharia as três landings de tabela. Verificado no navegador: as outras telas
+> continuam idênticas.
+>
+> **As duas restrições ⚠️ da seção, e o que aconteceu com cada uma:**
+>
+> 1. **`backdrop-filter` caro no Android de entrada.** O blur ficou **só nos três
+>    cartões** — área contida, e eles não se movem. O header é grudento e translúcido,
+>    mas **sem blur**: blur que repinta a cada quadro do scroll é exatamente o que trava
+>    o aparelho fraco. A variação de fundo que faz o vidro parecer vidro vem de três
+>    gradientes radiais no `background` do body, que o navegador pinta uma vez.
+>    No mobile o raio do blur cai de 22px para 14px. `@supports not (backdrop-filter…)`
+>    entrega cartão sólido — testado simulando a ausência de suporte.
+>
+> 2. **Vidro é armadilha de contraste — e era mesmo.** Os tons foram calculados, não
+>    estimados: pior caso = os três gradientes somados no mesmo ponto + o vidro em hover.
+>    Nessa conta, o `--muted` de então (`#9aa0a6`) dava **3,66:1**, abaixo do mínimo de
+>    4,5:1. Correção em dois lados: brilhos um pouco menores e `--muted` → `#b0b7bf`.
+>    O selo "em breve" também reprovou (4,27:1) e passou a usar **tinta escura** — sobre
+>    vidro, empilhar mais branco derruba o contraste em vez de ajudar.
+>    **Pior razão da capa hoje: 4,78:1.** Mexeu nos brilhos ou na opacidade do vidro,
+>    refaça a conta.
+>
+> **Três coisas que só apareceram fazendo:**
+>
+> - **A regra do mobile foi quase desfeita sem querer.** `.theme-dark .lp-hero` tem
+>   especificidade maior que o `.lp-hero` dentro do `@media (max-width: 640px)` — o hero
+>   novo ANULAVA o enxugamento que existia para o primeiro cartão caber acima da dobra
+>   num Android de 640px. A capa carrega overrides próprios dentro do `@media` por causa
+>   disso. Conferido a 360×640: o "Entrar no módulo" aparece sem rolar.
+> - **O logo é preto.** Era por isso que o header deste tema nascia **branco**. Com o
+>   header escuro, o wordmark "memphis" e a assinatura sumiam. Resolvido com
+>   `filter: invert(1) hue-rotate(180deg)`, que clareia o texto e devolve a matiz do
+>   símbolo. Se um dia existir uma versão clara do arquivo, troque a imagem e apague o filtro.
+> - **Faltava o link da política** no rodapé do hub e do login. O manifesto do 1.1 previa
+>   os dois e nenhum tinha entrado. Ambos foram incluídos.
+>
+> **O que NÃO foi feito, e por quê.** A seção sugere trocar Montserrat pelo stack de
+> sistema para remover o `fonts.googleapis.com` e apertar a CSP. Não dá para fazer isso
+> "só na capa": **13 páginas** carregam Google Fonts, e a assinatura em Sacramento
+> ("a essência do ponto de venda") aparece em 4 landings. Tirar a liberação da CSP com as
+> outras 12 ainda dependendo dela quebraria as fontes delas. Fica como decisão à parte —
+> não é um bônus de graça deste bloco. **A CSP não foi tocada.**
+
 **Estado atual:** tema escuro (`theme-dark`), teal `#1C9CC0`, Montserrat, `hub-grid`
 com três cartões (PDV ativo, PDP e RCA "em breve"), hero com kicker e rodapé.
 
@@ -1494,7 +1546,8 @@ explica o **porquê** e as armadilhas — este manifesto é índice, não substi
 | `public/pdv/promotor.html` | 1.3, 1.5.2 | Aviso de coleta · exibir `motivoRecusa` (**hoje só mostra a observação**) · histórico de retornos |
 | `public/pdv/admin.html` | 1.0, 1.5.1, 1.5.2, 1.8 | Campos institucionais na aba Listas · banner de escalonamento · motivo obrigatório ao recusar · três botões destrutivos |
 | `public/pdv/ranking.html` | 1.5.3 | Modo quadro de honra para edições passadas |
-| `public/index.html`, `public/pdv/login.html` | 1.1 | Link da política no rodapé |
+| ✅ `public/index.html`, `public/pdv/login.html` | 1.1, 5 | Link da política no rodapé — **tinha ficado de fora do Bloco 1**; entrou junto com a capa |
+| ✅ `public/index.html` + `public/style.css` | 5 | Capa com estética de vidro, escopada em `.theme-dark` |
 | `test/smoke.js` | todos | Casos novos — ver "Definição de pronto" |
 | `test/pentest.js` | 0, 2 | Whitelist de `pontosExtra` · promotor **não** recebe `promotores[]` |
 | `docs/01`…`08` + `docs/README.md` | 3.3 | Defasagem: 13 endpoints, coleções, índices, módulos `pdp`/`rca` |

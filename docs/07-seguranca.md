@@ -277,8 +277,10 @@ pessoas, e um clique errado aqui não tem desfazer):
 | **robots.txt** | ✅ | `Disallow: /` — ferramenta interna não deve ser indexada. |
 | **sitemap.xml** | ✅ *(ausência correta)* | Sitemap serve para guiar indexação; com `Disallow: /` seria contraditório. Não criar. |
 | **`<title>` por página** | ✅ | Todas as 11 páginas têm título próprio e descritivo. |
-| **`<meta description>`** | ➖ | Ausente em todas. Só tem valor em página indexável — não é o caso. |
+| **`<meta description>`** | ➖ | Ausente em quase todas. Só tem valor em página indexável — não é o caso. O hub ganhou uma no Bloco 5, por ser a porta de entrada. |
 | **`alt` nas imagens** | ✅ | Corrigido: as 3 fotos dinâmicas (galeria do painel e "minhas fotos") não tinham `alt`; agora descrevem cliente e nº da imagem. |
 | **Estados de erro nos formulários** | ✅ | Corrigido: `promotor.html` — a tela de 1.400 pessoas — reportava **tudo** só por toast, que some em 2,6 s. Ganhou o `.err` com `role="alert"` que as outras telas já tinham; o toast continua. |
-| **CTA acima da dobra** | ✅ | Corrigido: em Android de 640 px o "Entrar no módulo" caía **abaixo** da dobra (707 px). Hero compactado só no mobile → 619 px. Desktop intocado (Bloco 5 redesenha a capa). |
+| **CTA acima da dobra** | ✅ | Corrigido: em Android de 640 px o "Entrar no módulo" caía **abaixo** da dobra (707 px). Hero compactado só no mobile → 619 px. ⚠️ O Bloco 5 quase desfez isto: `.theme-dark .lp-hero` tem especificidade maior que o `.lp-hero` do bloco mobile e sobrescrevia o enxugamento — a capa carrega overrides próprios dentro do `@media` justamente para não reintroduzir o problema. |
+| **Contraste sobre vidro** | ✅ | Os tons da capa (Bloco 5) foram **calculados** contra o ponto mais claro possível do fundo com o cartão em hover, não estimados. Pior razão: 4,78:1. `--muted` subiu de `#9aa0a6` (3,66:1, reprovado) para `#b0b7bf`, e o selo "em breve" passou a usar tinta escura — empilhar mais branco sobre vidro derrubava o próprio texto dele para 4,27:1. |
+| **Link da política antes do login** | ✅ | Corrigido no Bloco 5: o item do 1.1 previa o link no rodapé de `index.html` e `login.html` e ele nunca tinha entrado. Quem ainda não entrou também é titular. |
 | **Imagens comprimidas** | ✅ | Único estático é o logo (37 KB, WebP). As fotos agora são entregues com `f_auto,q_auto` **na tela** — ⚠️ o ZIP do lote continua baixando o **original**, porque é o arquivo que vai para o servidor interno e vive a longo prazo. |

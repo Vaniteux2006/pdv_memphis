@@ -211,28 +211,191 @@ button:disabled { opacity: .5; cursor: not-allowed; transform: none; box-shadow:
 .tabs button.active { background: var(--teal); color: #fff; border-color: transparent; }
 .tabs button:hover:not(.active) { background: var(--bg-soft); color: var(--ink); }
 
-/* tema escuro (hub IM) — remapeia os tokens; o resto do CSS segue usando as vars */
+/* tema escuro (hub IM) — remapeia os tokens; o resto do CSS segue usando as vars.
+   `.theme-dark` está SÓ no public/index.html: é o gancho de escopo da capa. Tudo daqui
+   pra baixo que fale de vidro está preso a ele, então nem as telas do app nem as outras
+   três landings (pdv/, pdp/, rca/) — que compartilham .lp-* e .hub-* — mudam de aparência. */
 .theme-dark {
-  --ink: #f2f3f5;
-  --txt: #c7cace;
-  --muted: #9aa0a6;
+  --ink: #f4f6f8;
+  --txt: #c9ced4;
+  /* Medido, nao estimado. No pior caso do fundo (os tres brilhos somados) + o vidro em
+     hover, #9aa0a6 dava 3.66:1 e #a3aab2 dava 3.66-4.01:1 — abaixo do minimo. #b0b7bf
+     fecha 4.78:1. E a armadilha que o plano marca: sobre vidro a legibilidade muda com o
+     que passa por tras, entao o numero tem que valer no ponto mais claro, nao no medio. */
+  --muted: #b0b7bf;
   --line: #2b323a;
-  --bg: #12161b;
-  --bg-soft: #171c22;
+  --bg: #0d1116;             /* base mais funda: é o que dá o que borrar por trás do vidro */
+  --bg-soft: #141a21;
   --panel: #1c222a;
   --panel2: #1c222a;
   --teal-soft: #12303a;
-  --teal-dark: #4fc3e3;      /* teal mais claro pra ler no escuro (links) */
+  --teal-dark: #57c9e8;      /* teal mais claro pra ler no escuro (links) */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, .4);
   --shadow-md: 0 6px 18px rgba(0, 0, 0, .5);
-  background: var(--bg);
+  /* Profundidade suave: sombra LARGA e difusa, não escura e curta — é o que separa
+     "cartão flutuando" de "cartão com contorno". */
+  --shadow-vidro: 0 24px 60px -20px rgba(0, 0, 0, .65), 0 2px 8px rgba(0, 0, 0, .3);
+  --vidro: rgba(255, 255, 255, .055);
+  --vidro-borda: rgba(255, 255, 255, .11);
   color: var(--txt);
+  min-height: 100vh;
+  /* Os brilhos vivem no fundo do PROPRIO body, nao numa camada por cima.
+     A primeira versao usava um ::before com `position: fixed; z-index: -1` e isso
+     rendia artefato de composicao ao rolar (a camada fixa nao reacompanhava o resto).
+     Como background do body, o navegador propaga pro canvas: mesma aparencia, uma
+     camada a menos pra compor, e nada pra dar errado no aparelho fraco. */
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(58rem 42rem at 18% -8%, rgba(28, 156, 192, .16), transparent 62%),
+    radial-gradient(46rem 38rem at 92% 8%, rgba(86, 122, 190, .10), transparent 60%),
+    radial-gradient(64rem 34rem at 62% 74%, rgba(28, 156, 192, .07), transparent 62%);
+  background-repeat: no-repeat;
+  background-attachment: scroll; /* `fixed` e caro/ignorado no mobile — nao vale o custo */
 }
-.theme-dark .site-header { background: #fff; border-bottom-color: #e4e7ea; }
-.theme-dark .hub-card { background: var(--panel); }
-.theme-dark .lp-hero { background: var(--bg-soft); }
 .theme-dark .lp-hero h1 { color: var(--ink); }
 .theme-dark ::selection { background: var(--teal); color: #fff; }
+
+/* ---------- capa IM: estética de vidro (Bloco 5) ----------
+   Três decisões que parecem estilo e são desempenho/acessibilidade:
+
+   1. O FUNDO tem variação, mas não tem blur. Vidro só lê como vidro quando há algo
+      atrás dele — três brilhos radiais no background do body resolvem isso. Gradiente é
+      pintado uma vez; `backdrop-filter` recompõe a cada quadro. A variação é de graça,
+      o blur não é.
+
+   2. O BLUR fica só nos cartões. São três caixas de área contida e que não se movem.
+      O público é promotor de campo em Android de entrada, e blur em tempo real sobre
+      área grande (um header grudento, o fundo inteiro) derruba o scroll nesses
+      aparelhos. Por isso o header abaixo é translúcido SEM blur.
+
+   3. O contraste não confia no blur. Os tons foram CALCULADOS contra o ponto mais claro
+      possível do fundo (os três brilhos somados) com o vidro em hover, que é o pior caso
+      real. Pior razão da capa inteira: 4.78:1 — acima do mínimo AA de 4.5:1. Se dependesse
+      do borrão, a legibilidade mudaria conforme o que passasse por trás.
+      Ao mexer nos brilhos ou na opacidade do vidro, refaça a conta: os dois lados desse
+      cálculo estão nesta folha, e um `.20` inocente no gradiente derruba o texto pra 4.0:1. */
+
+/* header: translúcido para pertencer à mesma superfície, mas SEM backdrop-filter —
+   ele é grudento, e blur que repinta a cada scroll é o que trava o Android fraco */
+.theme-dark .site-header {
+  background: rgba(13, 17, 22, .88);
+  border-top-color: var(--teal);
+  border-bottom: 1px solid rgba(255, 255, 255, .07);
+  box-shadow: none;
+}
+/* O logo tem o wordmark "memphis" e a assinatura em PRETO — era por isso que o header
+   deste tema nascia branco. Com o header escuro, as duas linhas sumiam.
+   `invert` sozinho resolveria o preto, mas jogaria o teal do simbolo pra laranja;
+   o `hue-rotate(180deg)` devolve a matiz. Resultado: wordmark legivel, simbolo ainda teal.
+   Se um dia existir uma versao clara do arquivo, troque a imagem e apague este filtro. */
+.theme-dark .brand-logo { filter: invert(1) hue-rotate(180deg); }
+
+/* hero: hierarquia por TAMANHO e ESPAÇO, não por cor e borda.
+   Peso 300 e caixa normal — versalete com letter-spacing de 2px é o oposto do pedido. */
+.theme-dark .lp-hero {
+  background: transparent; border-bottom: 0;
+  padding: clamp(56px, 11vw, 132px) 22px clamp(40px, 7vw, 76px);
+}
+.theme-dark .lp-hero h1 {
+  font-size: clamp(38px, 7.2vw, 76px);
+  font-weight: 300;
+  letter-spacing: -.022em;   /* tracking negativo: texto grande e leve pede aperto, não folga */
+  text-transform: none;
+  line-height: 1.04;
+  margin: 14px 0 22px;
+}
+.theme-dark .lp-kicker { font-size: clamp(28px, 5vw, 40px); }
+.theme-dark .lp-hero p {
+  font-size: clamp(16px, 1.5vw, 19px);
+  font-weight: 300; line-height: 1.6; color: var(--muted);
+  max-width: 46ch; margin-inline: auto;
+}
+.theme-dark .lp-section { padding-top: clamp(8px, 2vw, 24px); padding-bottom: clamp(56px, 9vw, 104px); }
+
+/* os cartões — as ÚNICAS superfícies de vidro da página */
+.theme-dark .hub-grid { gap: clamp(14px, 2vw, 22px); max-width: 960px; }
+.theme-dark .hub-card {
+  background: var(--vidro);
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
+  backdrop-filter: blur(22px) saturate(150%);
+  border: 1px solid var(--vidro-borda);
+  border-radius: 20px;
+  box-shadow: var(--shadow-vidro);
+  padding: clamp(26px, 3.4vw, 38px) clamp(20px, 2.6vw, 28px);
+  /* coluna flex so pra ancorar a acao no rodape do cartao: com textos de tamanhos
+     diferentes, o selo "em breve" ficava boiando no meio enquanto o CTA do cartao
+     ativo ia pro fim — tres pontos de chegada distintos na mesma fileira */
+  display: flex; flex-direction: column;
+  /* 220ms: presente sem ser saltitante */
+  transition: transform .22s cubic-bezier(.2, .7, .3, 1), box-shadow .22s ease, border-color .22s ease, background .22s ease;
+}
+.theme-dark .hub-card:hover {
+  transform: translateY(-4px);
+  background: rgba(255, 255, 255, .085);
+  border-color: rgba(255, 255, 255, .18);
+  box-shadow: 0 34px 70px -22px rgba(0, 0, 0, .72), 0 2px 10px rgba(0, 0, 0, .34);
+}
+/* o cartão ativo se distingue por um brilho de dentro, não por borda colorida grossa */
+.theme-dark .hub-card.ativa {
+  border-color: rgba(87, 201, 232, .30);
+  box-shadow: var(--shadow-vidro), inset 0 1px 0 rgba(255, 255, 255, .07);
+}
+.theme-dark .hub-card.ativa:hover { border-color: rgba(87, 201, 232, .5); }
+/* "em breve" NÃO usa opacity: sobre vidro, opacidade derruba o contraste do texto abaixo
+   do mínimo. A diferença fica no selo e na ausência do realce do ativo. */
+.theme-dark .hub-card.breve { opacity: 1; }
+
+/* ícone dentro de um quadrado macio, em vez de emoji solto no ar */
+.theme-dark .hub-card .ic {
+  width: 60px; height: 60px; margin: 0 auto 18px;
+  display: grid; place-items: center; font-size: 27px;
+  border-radius: 17px;
+  background: linear-gradient(160deg, rgba(255, 255, 255, .12), rgba(255, 255, 255, .04));
+  border: 1px solid rgba(255, 255, 255, .09);
+}
+.theme-dark .hub-card.ativa .ic {
+  background: linear-gradient(160deg, rgba(28, 156, 192, .36), rgba(28, 156, 192, .12));
+  border-color: rgba(87, 201, 232, .28);
+}
+.theme-dark .hub-card h3 {
+  font-size: 19px; font-weight: 500; letter-spacing: -.01em; color: var(--ink); margin: 0 0 10px;
+}
+.theme-dark .hub-card p { font-size: 14.5px; line-height: 1.65; margin: 0 0 18px; }
+/* `align-self` porque o flex estica o item no eixo cruzado: sem isso o selo "em breve",
+   que tem fundo visivel, virava uma barra da largura inteira do cartao */
+.theme-dark .hub-card > :last-child { margin-top: auto; align-self: center; }
+.theme-dark .hub-cta { color: var(--teal-dark); font-weight: 500; }
+/* o selo usa tinta ESCURA, nao clara: sobre vidro, empilhar mais branco derruba o
+   contraste do proprio texto do selo (media 4.27:1). Escurecendo, sobe pra 8.25:1. */
+.theme-dark .hub-card .pill.warn {
+  background: rgba(0, 0, 0, .22); color: var(--txt);
+  border: 1px solid rgba(255, 255, 255, .12);
+}
+
+/* rodapé: parte da mesma superfície, sem virar faixa cinza colada no fim */
+.theme-dark .lp-footer {
+  background: transparent; color: var(--muted);
+  border-top: 1px solid rgba(255, 255, 255, .07);
+  padding: 44px 22px 52px;
+}
+.theme-dark .lp-footer .fbrand { color: var(--ink); font-weight: 500; letter-spacing: -.01em; }
+.theme-dark .lp-footer a { color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
+.theme-dark .lp-footer a:hover { color: var(--ink); }
+
+/* ⚠️ Sem suporte a backdrop-filter, `background: rgba(255,255,255,.055)` deixa o cartão
+   praticamente invisível. O fallback é sólido — perde o efeito, mantém a leitura. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .theme-dark .hub-card { background: #1b222b; border-color: #2b333d; }
+  .theme-dark .hub-card:hover { background: #222a34; }
+  .theme-dark .site-header { background: #0d1116; }
+}
+
+/* quem pediu menos movimento recebe menos movimento */
+@media (prefers-reduced-motion: reduce) {
+  .theme-dark .lp-hero > * { animation: none; }
+  .theme-dark .hub-card { transition: none; }
+  .theme-dark .hub-card:hover { transform: none; }
+}
 
 /* ---------- hub IM (portal de módulos: PDV / PDP / RCA) ---------- */
 .hub-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px; max-width: 900px; margin: 0 auto; }
@@ -550,6 +713,22 @@ button.modal-close:hover { background: rgba(255, 255, 255, .28); }
   .lp-hero p { font-size: 16px; margin-bottom: 18px; }
   .lp-section { padding-top: 32px; }
   .btn-cta.outline { margin-left: 0; margin-top: 12px; }
+
+  /* A capa tem especificidade maior (.theme-dark .lp-hero), entao sem estes overrides
+     ela ANULARIA o enxugamento acima e o primeiro cartao voltaria pra baixo da dobra —
+     que e exatamente o problema que aquele comentario descreve. O respiro grande do
+     desktop e do desktop; aqui a acao da pagina vem antes da estetica. */
+  .theme-dark .lp-hero { padding: 30px 20px 32px; }
+  .theme-dark .lp-hero h1 { font-size: 33px; margin: 10px 0 14px; }
+  .theme-dark .lp-kicker { font-size: 27px; }
+  .theme-dark .lp-hero p { font-size: 15.5px; margin-bottom: 0; }
+  .theme-dark .lp-section { padding-top: 4px; padding-bottom: 44px; }
+  .theme-dark .hub-card { padding: 22px 20px; border-radius: 18px; }
+  .theme-dark .hub-card .ic { width: 52px; height: 52px; font-size: 24px; margin-bottom: 14px; }
+  .theme-dark .hub-card p { margin-bottom: 14px; }
+  /* blur mais barato no aparelho fraco, que e onde ele custa */
+  .theme-dark .hub-card { -webkit-backdrop-filter: blur(14px) saturate(140%); backdrop-filter: blur(14px) saturate(140%); }
+  .theme-dark .lp-footer { padding: 32px 20px 36px; }
 
   /* abas do guia: rolam na horizontal em vez de quebrar em quatro linhas */
   .guia-tabs { flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start; padding-bottom: 4px; }
