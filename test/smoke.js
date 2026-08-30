@@ -3,6 +3,12 @@
 //   node test/smoke.js
 const http = require('http');
 const https = require('https');
+/**
+ * @param {string} method
+ * @param {string} path
+ * @param {{ body?: any, cookie?: string, raw?: string, gzip?: boolean }} [opcoes]
+ *   `raw` = Content-Type cru (para mandar corpo malformado de propósito)
+ */
 function req(method, path, { body, cookie, raw, gzip } = {}) {
   return new Promise((resolve, reject) => {
     const data = body == null ? null : Buffer.isBuffer(body) ? body : Buffer.from(typeof body === 'string' ? body : JSON.stringify(body));
@@ -470,6 +476,62 @@ async function uploadCloud(cookie, tipo, file, filename, ct) {
   ck('token é de uso único', (await req('POST', '/api/reset-password', { body: { token, password: 'outra123' } })).status === 400);
   const fp2 = J((await req('POST', '/api/forgot-password', { body: { email: 'naoexiste@x.com' } })).body);
   ck('email inexistente: genérico e SEM link (anti-enumeração)', fp2.ok === true && !fp2.devLink);
+
+  // ---- validação de fronteira (Bloco 4 — lib/validar.js) ----
+  // Cada caso aqui é uma das ameaças que o validar existe pra fechar. O que se prova é
+  // que a recusa acontece na BORDA, com 400 e mensagem legível — e não vira 500, nem
+  // atravessa e chega no Mongo como operador.
+  console.log('\n-- validação de fronteira (Bloco 4) --');
+  const fotoV = await uploadCloud(pc, 'fotos', jpeg, 'v.jpg', 'image/jpeg');
+  const envio = (body) => req('POST', '/api/submissions', { cookie: pc, body });
+
+  // 1. operador do Mongo no lugar de um valor
+  const nosql = await envio({ cliente: { $ne: null }, endereco: 'R', dataExposicao: '2026-08-02', fotos: [] });
+  ck('operador $ne no corpo do envio é recusado na borda (400)', nosql.status === 400, 'HTTP ' + nosql.status);
+
+  // 2. data que passa no formato mas NÃO existe no calendário. Sem isto, `semanaKey` sai
+  //    vazia e a foto entra sem semana — quebra silenciosa, longe daqui.
+  const data31 = await envio({ cliente: 'X', endereco: 'R', dataExposicao: '2026-02-31', fotos: [] });
+  ck('31 de fevereiro é recusado (400)', data31.status === 400 && /data/i.test(J(data31.body).error || ''), J(data31.body).error || '');
+  ck('data fora do formato AAAA-MM-DD é recusada (400)',
+    (await envio({ cliente: 'X', endereco: 'R', dataExposicao: '02/08/2026', fotos: [] })).status === 400);
+
+  // 3. texto sem teto viraria documento inchado no M0
+  const gigante = await envio({ cliente: 'C'.repeat(5000), endereco: 'R', dataExposicao: '2026-08-02', fotos: [] });
+  ck('texto acima do teto é recusado (400)', gigante.status === 400 && /caracteres/i.test(J(gigante.body).error || ''), J(gigante.body).error || '');
+
+  // 4. mass assignment: campo fora do esquema é IGNORADO, não aceito e não gera erro.
+  //    Erro seria pior — viraria um oráculo de quais campos existem no documento.
+  const okEnvio = await envio({ cliente: 'BORDA OK', endereco: 'R', dataExposicao: '2026-08-02',
+    fotos: [fotoV], baixado: true, validado: true, pago: true, createdAt: '1999-01-01T00:00:00.000Z' });
+  ck('envio com campos fora do esquema é aceito e os ignora', okEnvio.status === 200, J(okEnvio.body).error || '');
+  const subV = J((await req('GET', '/api/admin/submissions', { cookie: ac })).body).itens.find((x) => x.cliente === 'BORDA OK');
+  ck('mass assignment não passa: baixado/validado/pago/createdAt vieram do servidor',
+    !!subV && subV.baixado === false && subV.validado === null && subV.pago === false && !subV.createdAt.startsWith('1999'),
+    subV ? `baixado=${subV.baixado} validado=${subV.validado} pago=${subV.pago} createdAt=${subV.createdAt.slice(0, 10)}` : 'não achou');
+
+  // 5. PATCH parcial: campo AUSENTE tem que continuar ausente. Se virasse string vazia,
+  //    salvar a pré-avaliação apagaria o motivo da recusa junto — sem ninguém pedir.
+  await req('PATCH', '/api/admin/submissions/' + subV.id, { cookie: ac, body: { validado: false, motivoRecusa: 'Sem produto Memphis na foto' } });
+  const soPre = await req('PATCH', '/api/admin/submissions/' + subV.id, { cookie: ac, body: { preAvaliacao: 'BOM' } });
+  ck('PATCH parcial não apaga o que não foi mandado',
+    soPre.status === 200 && J(soPre.body).motivoRecusa === 'Sem produto Memphis na foto' && J(soPre.body).preAvaliacao === 'BOM',
+    J(soPre.body).motivoRecusa || J(soPre.body).error || '');
+
+  // 6. lista fechada: valor fora dela não vira categoria fantasma nos gráficos
+  ck('pré-avaliação fora da lista é recusada (400)',
+    (await req('PATCH', '/api/admin/submissions/' + subV.id, { cookie: ac, body: { preAvaliacao: 'OTIMO' } })).status === 400);
+  ck('ponto extra fora da lista é recusado (400)',
+    (await req('PATCH', '/api/admin/submissions/' + subV.id, { cookie: ac, body: { pontosExtra: ['Categoria Inventada'] } })).status === 400);
+
+  // 7. o e-mail tem DUAS réguas de propósito: domínio completo no cadastro público,
+  //    login interno (sem ponto) no painel — apertar o painel trancaria admin@local fora.
+  ck('cadastro público exige domínio completo',
+    (await req('POST', '/api/signup', { body: { name: 'Sem Ponto', email: 'alguem@local', password: 'senha1234', aceitePolitica: true } })).status === 400);
+  ck('painel aceita login interno sem ponto no domínio',
+    (await req('PATCH', '/api/admin/users/' + ju.id, { cookie: ac, body: { email: 'joao.interno@local' } })).status === 200);
+
+  await req('DELETE', '/api/admin/submissions/' + subV.id, { cookie: ac });
 
   console.log(`\n=== ${pass} passou, ${fail} falhou ===`);
   process.exit(fail ? 1 : 0);

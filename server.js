@@ -4,18 +4,22 @@ const zlib = require('zlib');
 const express = require('express');
 const cookieParser = require('cookie-parser');
 const jwt = require('jsonwebtoken');
-const helmet = require('helmet');
+// helmet e express-rate-limit declaram os tipos como `export { x as default }` num arquivo
+// .d.cts: em runtime o require() devolve a função, mas o checador enxerga o namespace.
+// A anotação abaixo é só para o editor — o require continua igual.
+const helmet = /** @type {typeof import('helmet').default} */ (/** @type {unknown} */ (require('helmet')));
 const compression = require('compression');
-const rateLimit = require('express-rate-limit');
+const rateLimit = /** @type {typeof import('express-rate-limit').default} */ (/** @type {unknown} */ (require('express-rate-limit')));
 const ExcelJS = require('exceljs');
 const db = require('./lib/db');
+const v = require('./lib/validar'); // validação de fronteira (req.body / req.query)
 const store = require('./lib/storage'); // Cloudinary
 const mailer = require('./lib/mailer'); // envio de email (reset de senha)
 
 const app = express();
 app.set('trust proxy', 1); // atrás de proxy (Vercel/Discloud) — IP real via X-Forwarded-For
 // Discloud exige porta 8080 + host 0.0.0.0. PORT pode ser sobrescrita por env (ex: testes locais).
-const PORT = process.env.PORT || 8080;
+const PORT = Number(process.env.PORT) || 8080; // env chega como string — o listen coage, o tipo não
 const HOST = process.env.HOST || '0.0.0.0';
 const JWT_SECRET = process.env.SESSION_SECRET || 'dev-secret-troque';
 const COOKIE = 'mp_token';
@@ -227,13 +231,19 @@ app.get('/api/contato', ah(async (req, res) => res.json(await db.getInstituciona
 // role é sempre promotor (admin só nasce pelo painel); a pessoa já define a própria senha.
 app.post('/api/signup', signupLimiter, ah(async (req, res) => {
   try {
-    const { name, email, password, telefone, grupo, regiao } = req.body;
-    if (!String(name || '').trim()) return res.status(400).json({ error: 'Informe seu nome completo' });
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim())) return res.status(400).json({ error: 'E-mail inválido' });
-    db.validaSenha(password); // erro vira 400 no catch abaixo
-    if (regiao && !db.REGIOES.some((r) => r.sigla === regiao)) return res.status(400).json({ error: 'Região inválida' });
+    // corpo público e sem autenticação: é a fronteira mais exposta do app
+    const { name, email, telefone, grupo, regiao, aceitePolitica } = v.objeto(req.body, {
+      name: v.texto({ obrigatorio: true, max: 120, rotulo: 'seu nome completo' }),
+      email: v.email({ obrigatorio: true, dominioCompleto: true, rotulo: 'o e-mail' }),
+      telefone: v.texto({ max: 30 }),
+      grupo: v.texto({ max: 80 }),
+      regiao: v.umDe(db.REGIOES.map((r) => r.sigla), { rotulo: 'a região' }),
+      aceitePolitica: v.booleano(),
+    });
+    // a força da senha quem julga é o db; validaSenha devolve a senha já coagida a string
+    const password = db.validaSenha(v.exigeEscalar(req.body?.password, 'a senha')); // erro vira 400 no catch abaixo
     // o aceite se valida AQUI, não só no front: marcar a caixa no navegador não é prova de nada
-    if (!req.body.aceitePolitica) return res.status(400).json({ error: 'É preciso aceitar a política de privacidade para criar a conta' });
+    if (!aceitePolitica) return res.status(400).json({ error: 'É preciso aceitar a política de privacidade para criar a conta' });
     const { politicaVersao } = await db.getInstitucionais();
     await db.createUser({ email, name, password, role: 'promotor', telefone, grupo, regiao, pendingApproval: true, aceiteVersao: politicaVersao });
     res.json({ ok: true, pending: true });
@@ -356,13 +366,22 @@ app.patch('/api/admin/institucionais', requireAuth, requirePerm('listas'), ah(as
 app.get('/api/admin/senhas', requireAuth, requirePerm('listas'), ah(async (req, res) => res.json(await db.listSenhasProg())));
 app.post('/api/admin/senhas', requireAuth, requirePerm('listas'), ah(async (req, res) => {
   try {
-    await db.addSenhaProg(req.body.tipo, req.body.inicio, req.body.senha);
+    const { tipo, inicio, senha } = v.objeto(req.body, {
+      tipo: v.umDe(['mensal', 'semanal'], { obrigatorio: true, rotulo: 'o tipo' }),
+      inicio: v.dataISO({ obrigatorio: true, rotulo: 'a data de início' }),
+      senha: v.texto({ obrigatorio: true, max: 120, rotulo: 'a senha' }),
+    });
+    await db.addSenhaProg(tipo, inicio, senha);
     res.json(await db.listSenhasProg());
   } catch (e) { res.status(400).json({ error: e.message }); }
 }));
 app.delete('/api/admin/senhas', requireAuth, requirePerm('listas'), ah(async (req, res) => {
   try {
-    await db.delSenhaProg(req.body.tipo, req.body.inicio);
+    const { tipo, inicio } = v.objeto(req.body, {
+      tipo: v.umDe(['mensal', 'semanal'], { obrigatorio: true, rotulo: 'o tipo' }),
+      inicio: v.dataISO({ obrigatorio: true, rotulo: 'a data de início' }),
+    });
+    await db.delSenhaProg(tipo, inicio);
     res.json(await db.listSenhasProg());
   } catch (e) { res.status(400).json({ error: e.message }); }
 }));
@@ -373,12 +392,14 @@ app.post('/api/admin/senhas/import', requireAuth, requirePerm('listas'), ah(asyn
   try {
     if (!req.body.file) return res.status(400).json({ error: 'Nenhum arquivo recebido' });
     const wb = new ExcelJS.Workbook();
-    try { await wb.xlsx.load(Buffer.from(String(req.body.file), 'base64')); }
+    // exceljs declara um `Buffer` próprio (`interface Buffer extends ArrayBuffer`) que não é
+    // o do Node — bug de tipagem da lib. O cast existe só para o checador.
+    try { await wb.xlsx.load(/** @type {any} */ (Buffer.from(String(req.body.file), 'base64'))); }
     catch { return res.status(400).json({ error: 'Arquivo inválido — envie uma planilha .xlsx' }); }
 
     // célula -> 'YYYY-MM-DD' (aceita data do Excel ou texto dd/mm/aaaa)
     const celData = (v) => {
-      if (v instanceof Date && !isNaN(v)) return v.toISOString().slice(0, 10);
+      if (v instanceof Date && !isNaN(v.getTime())) return v.toISOString().slice(0, 10);
       const m = celTxt(v).match(/(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})/);
       if (!m) return null;
       return `${m[3].length === 2 ? '20' + m[3] : m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
@@ -482,9 +503,10 @@ app.post('/api/admin/users/import', requireAuth, requirePerm('contas'), ah(async
   try {
     if (!req.body.file) return res.status(400).json({ error: 'Nenhum arquivo recebido' });
     const wb = new ExcelJS.Workbook();
-    try { await wb.xlsx.load(Buffer.from(String(req.body.file), 'base64')); }
+    try { await wb.xlsx.load(/** @type {any} */ (Buffer.from(String(req.body.file), 'base64'))); }
     catch { return res.status(400).json({ error: 'Arquivo inválido — envie uma planilha .xlsx' }); }
 
+    /** @type {[string, RegExp][]} */
     const CAMPOS = [
       ['email', /e-?mail/], ['name', /nome/], ['telefone', /telefone|celular|fone/],
       ['grupo', /grupo/], ['regiao', /regi/], ['setor', /setor/],
@@ -644,8 +666,17 @@ app.get('/api/admin/users/import-template.xlsx', requireAuth, requirePerm('conta
 // admin edita o perfil da conta (nome, email, grupo, região, telefone, setor, matrícula)
 app.patch('/api/admin/users/:id', requireAuth, requirePerm('contas'), ah(async (req, res) => {
   try {
-    const { name, email, grupo, regiao, telefone, setor, matricula } = req.body;
-    const u = await db.updateUser(req.params.id, { name, email, grupo, regiao, telefone, setor, matricula });
+    // objetoParcial: no PATCH de perfil, não mandar `grupo` não pode virar "apague o grupo"
+    const campos = v.objetoParcial(req.body, {
+      name: v.texto({ obrigatorio: true, max: 120, rotulo: 'o nome' }),
+      email: v.email({ obrigatorio: true, rotulo: 'o e-mail' }),
+      grupo: v.texto({ max: 80 }),
+      regiao: v.umDe(db.REGIOES.map((r) => r.sigla), { rotulo: 'a região' }),
+      telefone: v.texto({ max: 30 }),
+      setor: v.texto({ max: 80 }),
+      matricula: v.inteiro({ min: 0, max: 99999999, rotulo: 'a matrícula' }),
+    });
+    const u = await db.updateUser(req.params.id, campos);
     await auditar(req, { acao: db.ACOES.EDITOU_CONTA, alvo: u.id, detalhe: `${u.name} <${u.email}>` });
     res.json(u);
   } catch (e) { res.status(400).json({ error: e.message }); }
@@ -663,7 +694,8 @@ app.post('/api/admin/cracha', requireAuth, requirePerm('*'), ah(async (req, res)
 }));
 app.post('/api/cracha/validar', crachaLimiter, requireAuth, ah(async (req, res) => {
   try {
-    await db.validarCracha(req.user.id, req.body.codigo);
+    const { codigo } = v.objeto(req.body, { codigo: v.texto({ obrigatorio: true, max: 128, rotulo: 'o código do crachá' }) });
+    await db.validarCracha(req.user.id, codigo);
     // quem passou a ter acesso total, e quando — a mudança de privilégio mais forte do sistema
     await auditar(req, { acao: db.ACOES.USOU_CRACHA });
     res.json({ ok: true });
@@ -739,7 +771,7 @@ app.post('/api/admin/ref/import', requireAuth, requirePerm('listas'), ah(async (
   try {
     if (!req.body.file) return res.status(400).json({ error: 'Nenhum arquivo recebido' });
     const wb = new ExcelJS.Workbook();
-    try { await wb.xlsx.load(Buffer.from(String(req.body.file), 'base64')); }
+    try { await wb.xlsx.load(/** @type {any} */ (Buffer.from(String(req.body.file), 'base64'))); }
     catch { return res.status(400).json({ error: 'Arquivo inválido — envie uma planilha .xlsx' }); }
     const grupos = [], promotores = [];
     // "Grupo do Promotor" precisa ser testada ANTES de /grupo/, senão a coluna do grupo
@@ -845,7 +877,6 @@ app.delete('/api/admin/ref/:type', requireAuth, requirePerm('listas'), ah(async 
 
 // ---------- envio de fotos (promotor) — fotos já foram pro Cloudinary; aqui só os metadados ----------
 app.post('/api/submissions', requireAuth, ah(async (req, res) => {
-  const { cliente, endereco, dataExposicao } = req.body;
   // A identidade vem da SESSÃO, nunca do corpo. O campo de texto livre era herança da era
   // do WhatsApp, quando não havia contas, e criava três problemas de uma vez:
   //  1. privacidade — o autocomplete expunha os nomes dos colegas;
@@ -853,21 +884,41 @@ app.post('/api/submissions', requireAuth, ah(async (req, res) => {
   //     aderência e a quem o pagamento é atribuído);
   //  3. as travas de 1/semana e 4/mês contam por norm(promotor): digitando outro nome, a
   //     cota zerava. As travas antifraude não travavam nada.
+  // `promotor` no corpo continua sendo ACEITO e IGNORADO — recusar seria dizer ao cliente
+  // que o campo existe, e quebraria o app antigo de quem ainda não recarregou a página.
   const promotor = req.user.name;
   const regiao = req.user.regiao || '';
   const grupo = req.user.grupo || '';
-  const fotos = Array.isArray(req.body.fotos) ? req.body.fotos : [];
+  const fotos = Array.isArray(req.body?.fotos) ? req.body.fotos : [];
   // limpa do Cloudinary as fotos já enviadas, caso a gente rejeite o registro
   const limparOrfas = () => fotos.forEach((f) => f && f.publicId && store.remove(f.publicId, f.resourceType || 'image'));
 
-  // só aceita IDs dentro da nossa pasta (anti-abuso)
-  const validas = fotos.filter((f) => f && typeof f.publicId === 'string' && f.publicId.startsWith('memphis-pdv/fotos/'));
-  if (validas.length !== fotos.length) { limparOrfas(); return res.status(400).json({ error: 'Foto inválida' }); }
-
-  if (!cliente || !endereco || !dataExposicao) {
+  // Validação de fronteira ANTES de qualquer trabalho. O try existe por um motivo só: um
+  // 400 daqui ainda precisa limpar as imagens que já subiram pro Cloudinary — senão cada
+  // envio malformado deixa lixo pago lá dentro, sem nada no banco apontando pra ele.
+  let dados;
+  try {
+    dados = v.objeto(req.body, {
+      cliente: v.texto({ obrigatorio: true, max: 120, rotulo: 'o cliente' }),
+      endereco: v.texto({ obrigatorio: true, max: 200, rotulo: 'o endereço' }),
+      dataExposicao: v.dataISO({ obrigatorio: true, rotulo: 'a data da exposição' }),
+      fotos: v.lista(v.forma({
+        publicId: v.texto({ obrigatorio: true, max: 200 }),
+        resourceType: v.texto({ max: 20, padrao: 'image' }),
+        originalName: v.texto({ max: 200, padrao: 'foto.jpg' }),
+        // teto só anti-abuso; o limite REAL de 2 imagens é checado abaixo, para a pessoa
+        // ler "no máximo 2 imagens por foto (antes e depois)" e não uma mensagem genérica
+      }), { max: 20, rotulo: 'fotos' }),
+    });
+  } catch (e) {
     limparOrfas();
-    return res.status(400).json({ error: 'Preencha cliente, endereço e data da exposição' });
+    return res.status(e.status || 400).json({ error: e.message });
   }
+  const { cliente, endereco, dataExposicao } = dados;
+
+  // só aceita IDs dentro da nossa pasta (anti-abuso)
+  const validas = dados.fotos.filter((f) => f.publicId.startsWith('memphis-pdv/fotos/'));
+  if (validas.length !== fotos.length) { limparOrfas(); return res.status(400).json({ error: 'Foto inválida' }); }
   // Região vem do cadastro agora. Se estiver vazia, a pessoa não tem como consertar
   // sozinha — é justamente o que 2.5 impede que ela digite. Então diga o que fazer.
   if (!regiao) {
@@ -922,8 +973,9 @@ app.get('/api/my/retornos', requireAuth, ah(async (req, res) =>
 // então precisa de um caminho pra avisar quando estiverem errados. O texto livre aqui
 // DESCREVE o problema; quem corrige o cadastro é o admin.
 app.post('/api/my/correcao-cadastro', requireAuth, ah(async (req, res) => {
-  const descricao = String(req.body?.descricao || '').trim().slice(0, 500);
-  if (descricao.length < 5) return res.status(400).json({ error: 'Descreva o que está errado.' });
+  const { descricao } = v.objeto(req.body, {
+    descricao: v.texto({ obrigatorio: true, min: 5, max: 500, rotulo: 'o que está errado' }),
+  });
   await db.abrirCorrecao(req.user, descricao);
   res.json({ ok: true });
 }));
@@ -953,10 +1005,26 @@ app.get('/api/admin/submissions', requireAuth, requirePerm('fotos'), ah(async (r
 
 app.patch('/api/admin/submissions/:id', requireAuth, requirePerm('fotos'), ah(async (req, res) => {
   try {
+    // objetoParcial, não objeto: num PATCH, campo AUSENTE tem que continuar ausente. Se
+    // virasse string vazia aqui, salvar a pré-avaliação apagaria o motivo da recusa junto.
+    const patch = v.objetoParcial(req.body, {
+      baixado: v.booleano(),
+      pago: v.booleano(),
+      preAvaliacao: v.umDe(['', ...db.PRE_AVALIACOES], { rotulo: 'a pré-avaliação' }),
+      // a lista vigente é editável (aba Listas), então quem confere de verdade é o db —
+      // aqui só garantimos que são strings, e não objetos com operador do Mongo dentro
+      pontosExtra: v.lista(v.texto({ max: 80 }), { max: 20, rotulo: 'pontos extras' }),
+      motivoRecusa: v.texto({ max: 200, rotulo: 'o motivo da recusa' }),
+      observacao: v.texto({ max: 2000, rotulo: 'a observação' }),
+      // três estados: true, false e null (pendente) — `booleano()` não serve
+      validado: (valor, campo) => (valor === null ? null : v.booleano()(valor, campo)),
+      promotor: v.texto({ max: 120, rotulo: 'o nome do promotor' }),
+      permitirTrocarAutor: v.booleano(),
+    });
     // trocar o autor é explícito e auditado — não passa por engano junto de outro campo
-    const trocandoAutor = req.body.promotor !== undefined && req.body.permitirTrocarAutor === true;
+    const trocandoAutor = patch.promotor !== undefined && patch.permitirTrocarAutor === true;
     const antes = trocandoAutor ? await db.getSubmission(req.params.id) : null;
-    const doc = await db.updateSubmission(req.params.id, req.body);
+    const doc = await db.updateSubmission(req.params.id, patch);
     if (trocandoAutor) {
       await auditar(req, { acao: db.ACOES.CORRIGIU_AUTORIA, alvo: req.params.id,
         detalhe: `${antes?.promotor || '?'} -> ${doc.promotor}` });
@@ -1011,7 +1079,7 @@ app.get('/api/admin/series', requireAuth, requirePerm('aderencia'), ah(async (re
   const { de, ate } = periodoDaQuery(req, por === 'mes' ? 12 : 3); // por mês, 12 meses conta uma história melhor
   if (de > ate) return res.status(400).json({ error: 'A data inicial é depois da final' });
   // teto de baldes: 3 anos por semana viraria 150 pontos ilegíveis e uma varredura à toa
-  const dias = (new Date(ate) - new Date(de)) / 86400000;
+  const dias = (new Date(ate).getTime() - new Date(de).getTime()) / 86400000;
   if (por === 'semana' && dias > 730) return res.status(400).json({ error: 'Período longo demais por semana — use "por mês" ou encurte pra até 2 anos.' });
   res.json(await db.serie({ de, ate, por }));
 }));
@@ -1019,7 +1087,13 @@ app.get('/api/admin/series', requireAuth, requirePerm('aderencia'), ah(async (re
 // ---------- ranking ----------
 // admin marca 1º/2º/3º da edição (a exclusividade da posição é garantida no db)
 app.post('/api/admin/ranking', requireAuth, requirePerm('fotos'), ah(async (req, res) => {
-  try { res.json(await db.setRanking(req.body.id, req.body.pos)); }
+  try {
+    const { id, pos } = v.objeto(req.body, {
+      id: v.texto({ obrigatorio: true, max: 64, rotulo: 'a foto' }),
+      pos: v.inteiro({ obrigatorio: true, min: 1, max: 3, rotulo: 'a posição' }),
+    });
+    res.json(await db.setRanking(id, pos));
+  }
   catch (e) { res.status(400).json({ error: e.message }); }
 }));
 // página do ranking: qualquer usuário logado vê os vencedores e as edições passadas
@@ -1094,7 +1168,7 @@ const COLUNAS_MODELO = ['Seq', 'REF', 'Data', 'Contato', 'Nome', 'Cliente', 'Pro
 const LARGURAS = [6, 8, 11, 15, 22, 34, 34, 22, 15, 6, 8, 40, 55, 14, 16];
 const semanaDoMes = (dateStr) => {
   const d = new Date(String(dateStr) + 'T00:00:00Z');
-  return isNaN(d) ? '' : `${Math.ceil(d.getUTCDate() / 7)}ª Semana`;
+  return isNaN(d.getTime()) ? '' : `${Math.ceil(d.getUTCDate() / 7)}ª Semana`;
 };
 
 app.get('/api/admin/export.xlsx', requireAuth, requirePerm('fotos'), ah(async (req, res) => {
@@ -1146,7 +1220,7 @@ app.get('/api/admin/export.xlsx', requireAuth, requirePerm('fotos'), ah(async (r
     ws.views = [{ state: 'frozen', ySplit: 7 }];
   }
 
-  wb.calcProperties = wb.calcProperties || {};
+  if (!wb.calcProperties) wb.calcProperties = { fullCalcOnLoad: true };
   wb.calcProperties.fullCalcOnLoad = true;
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.setHeader('Content-Disposition', `attachment; filename="registro-clientes-${new Date().toISOString().slice(0, 10)}.xlsx"`);
@@ -1346,8 +1420,9 @@ app.use((err, req, res, next) => {
 });
 
 // robustez: uma rejeição/exceção solta NÃO deve derrubar o servidor inteiro (só loga)
-process.on('unhandledRejection', (e) => console.error('unhandledRejection:', (e && e.message) || e));
-process.on('uncaughtException', (e) => console.error('uncaughtException:', (e && e.message) || e));
+const msgDoErro = (/** @type {any} */ e) => (e && e.message) || e;
+process.on('unhandledRejection', (e) => console.error('unhandledRejection:', msgDoErro(e)));
+process.on('uncaughtException', (e) => console.error('uncaughtException:', msgDoErro(e)));
 
 // Rodando direto (Discloud/local): conecta no Mongo e sobe o servidor HTTP em 0.0.0.0:8080.
 // Na Vercel: server.js é importado como função (module.exports = app) e o

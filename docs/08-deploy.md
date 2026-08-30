@@ -104,6 +104,24 @@ node tools/dev-preview.js    # desenvolvimento — porta 3000, SEMPRE no banco d
 No primeiro boot o servidor conecta no Mongo, cria índices e semeia
 admin + promotores/grupos/clientes.
 
+### Checagem de tipos (opcional, não afeta o deploy)
+
+O projeto tem `jsconfig.json` com `checkJs: true` e os `@typedef` em `lib/tipos.js`.
+Isso liga autocomplete e erro **dentro do editor** (o VS Code busca os `@types` de
+node/express sozinho, via `typeAcquisition`). Para conferir por fora dele:
+
+```bash
+npm i -D --no-save typescript @types/node @types/express && npx tsc -p jsconfig.json
+```
+
+`--no-save` de propósito: **nada disso entra no `package.json`**. O Node ignora o
+`jsconfig.json`, não existe build step, e o `discloud.config` segue apontando
+`MAIN=server.js`. Trocar isso é decisão da fase 2 do Bloco 4 — e só depois do piloto,
+porque converter para `.ts` de verdade exige build e mudaria o `MAIN` para `dist/server.js`.
+
+Hoje o comando acima fecha em **0 erros**; se um dia acusar algo, o achado é real —
+não é ruído de configuração.
+
 ## Operação
 
 | Tarefa | Como |

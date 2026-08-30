@@ -4,7 +4,10 @@
 > **05/ago/2026** (organização de dados · LGPD · UML/BPMN) e morre quando os
 > blocos forem concluídos e absorvidos pelos docs `01`–`09`.
 >
-> Estado: **plano fechado, aguardando execução**. Nada aqui foi executado ainda.
+> Estado (28/ago/2026): **Blocos 0, 1, 2, 3 e a fase 1 do 4 executados.**
+> Falta: **Bloco 4 fases 2–3** (só depois do piloto estável, por decisão do próprio
+> plano) e o **Bloco 5** (capa), que é independente e ainda precisa de uma decisão de
+> escopo — só a capa, ou `login.html` e `promotor.html` também.
 
 ---
 
@@ -1241,11 +1244,30 @@ A auditoria mediu: docs pararam em 24/jul, código andou até 28/jul.
 
 Executar **na ordem**, e cada fase é útil sozinha — se você parar na 1, já valeu.
 
-### Fase 1 — JSDoc + `checkJs` (sem build, sem risco)
+### Fase 1 — JSDoc + `checkJs` (sem build, sem risco) ✅ **FEITA (28/ago/2026)**
 
 `jsconfig.json` com `checkJs: true` + `@typedef` num `lib/tipos.js` (JSDoc puro,
 zero runtime) para os contratos centrais: `User`, `Submission`, `FiltroSubmissions`,
 `Permissao`, `Referencia`.
+
+> **Como ficou.** `npx tsc -p jsconfig.json` fecha em **0 erros** (eram 57 na primeira
+> passada). Nenhuma dependência entrou no `package.json` — o `typeAcquisition` do
+> `jsconfig` resolve no editor, e a checagem por fora usa `npm i -D --no-save`. Registrado
+> em [08-deploy.md](08-deploy.md#checagem-de-tipos-opcional-não-afeta-o-deploy).
+>
+> Dos 57, o que era achado de verdade e virou correção no código:
+> - `app.listen(PORT)` e `dev-preview` recebiam `PORT` como **string** (`process.env` sempre
+>   devolve string; o `listen` coagia por baixo dos panos);
+> - `isNaN(umDate)` e `dataA - dataB` em cinco pontos — funcionavam só por coerção implícita;
+> - em `test/carga.js`, `Object.entries(status).filter(([c]) => c < 500)` comparava a
+>   **chave string** com número;
+> - `addSubmission` prometia devolver uma `Submission` completa, mas os campos vinham de um
+>   spread parcial: nada garantia `cliente`/`regiao`/`dataExposicao`. O contrato foi apertado
+>   para exigi-los (os três callers já os mandavam).
+>
+> O resto era ruído de tipagem de dependência — `helmet` e `express-rate-limit` declaram
+> `export { x as default }` num `.d.cts`, e o `exceljs` declara um `Buffer` próprio que não é
+> o do Node. Resolvidos com cast anotado no ponto de uso, com o porquê escrito ao lado.
 
 Hoje o projeto tem **zero** anotações JSDoc. Isso liga autocomplete e erro no editor
 sem tocar em `package.json` de produção, sem build, sem mexer no deploy. `npx tsc
@@ -1255,7 +1277,7 @@ Anotar primeiro os pontos onde a forma é ambígua de verdade:
 `queryDeSubmissions` (recebe `req.query` cru), `imagensDe` (formato antigo × novo),
 `validado: true|false|null`, `matricula: number|null` com o `0` de semântica especial.
 
-### Fase 2 — Avaliar `.ts` onde ele brilha
+### Fase 2 — Avaliar `.ts` onde ele brilha ⏸️ **parada por decisão do plano: só depois do piloto**
 
 Alvos em ordem de valor por unidade de risco:
 
@@ -1274,11 +1296,11 @@ produção — motivo pelo qual a Fase 2 vem **depois** do piloto, não antes.
 depende da versão de Node que o Discloud roda — teria que confirmar antes de contar
 com isso.)
 
-### Fase 3 — `pdp` e `rca` nascem em TS
+### Fase 3 — `pdp` e `rca` nascem em TS ⏸️ **idem — os módulos ainda estão vazios**
 
 Estão vazios. É a forma barata de entrar em TypeScript sem migrar nada que já roda.
 
-### Em paralelo: validação em runtime
+### Em paralelo: validação em runtime ✅ **FEITA (28/ago/2026)**
 
 Mais valioso que tipagem estática para este app, e vale independente de qualquer
 fase acima. Tipo some em runtime; `req.body` é hostil por definição — e nenhum dos
@@ -1287,6 +1309,34 @@ bugs que este projeto teve de fato teria sido pego pelo compilador.
 Um `lib/validar.js` de ~80 linhas cobre os 6–8 endpoints que aceitam corpo do
 cliente. Sem dependência nova (`zod` faria o mesmo, mas nesta escala não paga o
 peso). O `pontosExtra` do Bloco 0 é o primeiro cliente.
+
+> **Como ficou.** Nove rotas cobertas: `POST /api/signup`, `POST /api/submissions`,
+> `PATCH /api/admin/submissions/:id`, `PATCH /api/admin/users/:id`,
+> `POST /api/admin/ranking`, `POST /api/cracha/validar`, `POST` e
+> `DELETE /api/admin/senhas`, `POST /api/my/correcao-cadastro`. Detalhe em
+> [07-seguranca.md](07-seguranca.md#validação-de-entrada).
+>
+> ⚠️ **Duas armadilhas que apareceram só na execução**, e que quem mexer nisso depois
+> precisa conhecer:
+>
+> 1. **PATCH precisa de `objetoParcial`, não de `objeto`.** Campo ausente tem que
+>    continuar ausente. Com `objeto`, salvar só a pré-avaliação mandaria `motivoRecusa: ''`
+>    junto e apagaria o motivo da recusa — sem erro na tela, sem ninguém ter pedido.
+> 2. **O e-mail tem duas réguas.** A primeira versão usava a régua do cadastro público
+>    (domínio com ponto) também no painel — e o smoke pegou na hora: isso recusa
+>    `admin@local` e `mat…@sem-email.memphis.local`, que é justamente o caminho de quem
+>    **não tem e-mail** criado no 1.7.2. Apertar a régua do painel tranca a operação do
+>    lado de fora do próprio sistema.
+>
+> `POST /api/submissions` é a única rota com `try/catch` próprio, e por um motivo que não
+> é estilo: um 400 ali ainda tem que apagar do Cloudinary as imagens que já subiram. Sem
+> isso, cada envio malformado deixa arquivo pago para trás sem nada no banco apontando
+> para ele.
+>
+> Onze casos novos no `smoke.js` (seção "validação de fronteira"), cobrindo operador do
+> Mongo no corpo, 31 de fevereiro, texto acima do teto, mass assignment ignorado em
+> silêncio, PATCH parcial que não apaga o que não foi mandado, listas fechadas e as duas
+> réguas de e-mail.
 
 ---
 
@@ -1428,9 +1478,9 @@ explica o **porquê** e as armadilhas — este manifesto é índice, não substi
 | `docs/09-lgpd.md` | 3.3 | **ROPA:** campo × finalidade × base legal × retenção × quem acessa |
 | `public/politica-de-privacidade.html` | 1.1 | Servida na raiz (vale para o hub inteiro) |
 | ~~`public/termos-de-uso.html`~~ | ~~1.1.1~~ | ❌ **Descartado** — já está no contrato dos promotores |
-| `lib/tipos.js` | 4-f1 | `@typedef` JSDoc: `User`, `Submission`, `FiltroSubmissions`, `Permissao`, `Referencia` |
-| `lib/validar.js` | 4 | Validação de fronteira (~80 linhas, sem dependência nova) |
-| `jsconfig.json` | 4-f1 | `checkJs: true` |
+| ✅ `lib/tipos.js` | 4-f1 | `@typedef` JSDoc: `User`, `Submission`, `FiltroSubmissions`, `Permissao`, `Referencia` (+ `Imagem`, `Retorno`, `Institucionais`) |
+| ✅ `lib/validar.js` | 4 | Validação de fronteira (sem dependência nova) |
+| ✅ `jsconfig.json` | 4-f1 | `checkJs: true` + `typeAcquisition` (nenhuma dependência no `package.json`) |
 
 ### Arquivos editados
 
@@ -1468,6 +1518,13 @@ Estes cobrem exatamente as armadilhas ⚠️ do plano. **Nenhum bloco fecha sem 
 8. Auditoria grava no download de ZIP e no reset.
 9. Reset **aborta** se o backup falhar.
 10. Importação sem e-mail cai na senha provisória e aparece separada no resultado.
+11. **(Bloco 4)** Operador do Mongo no corpo do envio é recusado na borda com 400.
+12. **(Bloco 4)** Data que passa no formato mas não existe (`2026-02-31`) é recusada.
+13. **(Bloco 4)** Campo fora do esquema é **ignorado em silêncio**, não aceito nem erro —
+    `baixado`/`validado`/`pago`/`createdAt` continuam vindo do servidor.
+14. **(Bloco 4)** PATCH parcial não apaga o que não foi mandado (a pré-avaliação não leva
+    o `motivoRecusa` junto).
+15. **(Bloco 4)** O painel aceita login interno sem ponto no domínio; o cadastro público não.
 
 ## Definição de pronto
 

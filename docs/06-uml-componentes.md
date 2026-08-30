@@ -51,6 +51,13 @@ classDiagram
     +sendResetEmail()
     +configured
   }
+  class Validar {
+    +objeto(corpo, esquema)
+    +objetoParcial(corpo, esquema)
+    +texto() umDe() inteiro()
+    +dataISO() email() lista() forma()
+    +ErroDeEntrada (status 400)
+  }
   class Frontend {
     +api()
     +cloudinaryUpload()
@@ -59,6 +66,7 @@ classDiagram
     +JSZip (ZIP no navegador)
   }
 
+  Server --> Validar : valida a fronteira antes de tudo
   Server --> Db : usa
   Server --> Storage : usa
   Server --> Mailer : usa
@@ -72,13 +80,18 @@ classDiagram
 
 > `Server` = `server.js` · `Db` = `lib/db.js` · `Mongo` = `lib/mongo.js` ·
 > `Storage` = `lib/storage.js` · `Mailer` = `lib/mailer.js` ·
+> `Validar` = `lib/validar.js` ·
 > `Frontend` = `public/*.html` + `common.js` + `vendor/jszip.min.js`.
+>
+> `lib/tipos.js` não aparece no diagrama de propósito: são só `@typedef` de JSDoc, com
+> zero runtime — ninguém o carrega, nem em produção nem em teste.
 
 ## Responsabilidades (separação de camadas)
 
 ```mermaid
 flowchart TD
   F["Frontend<br/>(apresentação + ZIP)"] --> SV["server.js<br/>(rotas, auth, permissões, validação, Excel)"]
+  SV --> VL["lib/validar.js<br/>(fronteira: forma do que chega)"]
   SV --> DB["lib/db.js<br/>(regras de negócio + dados)"]
   SV --> ST["lib/storage.js<br/>(arquivos)"]
   SV --> ML["lib/mailer.js<br/>(email)"]
@@ -92,6 +105,8 @@ flowchart TD
 | `lib/mongo.js` | Conexão única e cacheada com o Mongo (pool 100) | Não conhece o domínio |
 | `lib/storage.js` | Upload assinado, URL de entrega e remoção no Cloudinary | Não conhece o domínio |
 | `lib/mailer.js` | Envio do email de redefinição de senha (nodemailer) | Não conhece o domínio |
+| `lib/validar.js` | **Forma** do que chega do cliente: escalar vs. objeto, tetos, listas fechadas, mass assignment | Não conhece regra de negócio — quem julga se a senha é fraca ou se o ponto extra está na lista vigente é o `db` |
+| `lib/tipos.js` | `@typedef` JSDoc dos contratos centrais, para o editor e o `tsc --noEmit` | **Não roda**: zero runtime, ninguém o carrega |
 | `public/` | Telas e interações; chama a API e o Cloudinary; monta o ZIP (JSZip) | Sem lógica de negócio sensível |
 
 Essa separação é o que permitiu **trocar a infraestrutura sem reescrever as rotas**:

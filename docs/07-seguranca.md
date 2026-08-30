@@ -9,7 +9,7 @@ flowchart TD
   G --> C["Cookie JWT httpOnly + sameSite"]
   C --> AUTH["requireAuth: valida JWT + revalida 'active' no Mongo"]
   AUTH --> PERM["requirePerm: permissão granular por rota"]
-  PERM --> VAL["Validação de entrada por rota"]
+  PERM --> VAL["lib/validar.js: esquema por rota<br/>(recusa operador do Mongo, corta mass assignment)"]
   VAL --> DATA["Acesso restrito ao dono (fotos)"]
 ```
 
@@ -55,6 +55,37 @@ flowchart TD
   `memphis-pdv/fotos/`; e apaga fotos órfãs se a validação falhar.
 
 ### Validação de entrada
+
+**Camada de fronteira — `lib/validar.js` (ago/2026).** Um esquema declarado por rota,
+sem dependência nova, rodando *antes* de qualquer trabalho. Fecha três coisas:
+
+| Ameaça | Como fecha |
+|---|---|
+| Operador do Mongo no lugar de um valor (`{"cliente": {"$ne": null}}`, `?promotor[$regex]=.*`) | toda regra **exige escalar** e recusa objeto/array — recusa, não coage |
+| *Mass assignment* | `objeto()` devolve **só** as chaves do esquema; o resto é descartado em silêncio. Erro seria pior: viraria um oráculo de quais campos o documento tem |
+| Texto sem teto / lista sem teto | todo campo tem `max`; sem ele um POST de 1 MB vira documento de 1 MB no M0 |
+
+Duas escolhas que parecem detalhe e não são:
+
+- **`objetoParcial` no PATCH.** Campo ausente continua ausente. Se virasse string vazia,
+  salvar a pré-avaliação apagaria o motivo da recusa junto — sem ninguém ter pedido.
+- **Duas réguas de e-mail.** O cadastro público exige domínio completo; o painel aceita
+  login interno sem ponto (`admin@local`, `mat…@sem-email.memphis.local`, o caminho de
+  quem não tem e-mail). Apertar a régua do painel trancaria a operação do lado de fora
+  do próprio sistema.
+
+Rotas cobertas: `POST /api/signup`, `POST /api/submissions`,
+`PATCH /api/admin/submissions/:id`, `PATCH /api/admin/users/:id`,
+`POST /api/admin/ranking`, `POST /api/cracha/validar`,
+`POST` e `DELETE /api/admin/senhas`, `POST /api/my/correcao-cadastro`.
+
+O erro sobe como `ErroDeEntrada` com `status: 400`; o handler de erro do `server.js` já
+honra `err.status`, então nenhuma rota precisa de `try/catch` próprio. A exceção é
+`POST /api/submissions`, que **precisa** do `try`: um 400 ali ainda tem que apagar do
+Cloudinary as imagens que já subiram, senão cada envio malformado deixa arquivo pago
+para trás, sem nada no banco apontando para ele.
+
+**Camadas anteriores (seguem valendo):**
 - Campos obrigatórios checados em cada rota; `updateSubmission` só aceita uma
   **lista branca** de campos (`baixado, preAvaliacao, pontosExtra, validado, motivoRecusa, observacao, pago`)
   — o cliente não consegue gravar campos arbitrários. `pontosExtra` também tem o **valor**
@@ -85,7 +116,9 @@ flowchart TD
 - `queryDeSubmissions` recebe `req.query` cru. O parser do Express transforma
   `?regiao[$ne]=X` num **objeto**, que iria direto para o Mongo como operador.
   Os quatro campos que entravam sem tratamento (`uploadedBy`, `regiao`, `grupo`,
-  `preAvaliacao`) agora passam por `String()`.
+  `preAvaliacao`) agora passam por `String()`. Desde ago/2026 há uma **segunda tranca**
+  no corpo: `lib/validar.js` recusa qualquer valor não escalar antes de a rota rodar —
+  as duas defesas são independentes de propósito, cada uma cobre uma porta.
 - Não houve escalada de privilégio: a única rota que espalha `req.query` exige permissão
   `fotos`, e quem a tem já enxerga todas as fotos. `/api/my/submissions` **não** espalha
   `req.query` — monta o filtro só com `uploadedBy` da sessão. A correção é para não virar

@@ -27,6 +27,8 @@ flowchart TB
     MGL["mongo.js<br/>conexão cacheada"]
     STL["storage.js<br/>Cloudinary"]
     MAL["mailer.js<br/>email (reset de senha)"]
+    VAL["validar.js<br/>validação de fronteira"]
+    TIP["tipos.js<br/>@typedef (JSDoc, zero runtime)"]
   end
 
   MO[("MongoDB Atlas")]
@@ -34,6 +36,7 @@ flowchart TB
   SMTP[("SMTP")]
 
   Browser -->|"HTTPS + cookie JWT"| MW --> RT
+  RT --> VAL
   RT --> DBL
   RT --> STL
   RT --> EX
@@ -59,6 +62,8 @@ flowchart TB
 | ZIP | **JSZip no navegador** (vendorado — o servidor só entrega o manifesto) | `public/vendor/jszip.min.js` |
 | Compressão | `compression` (gzip) + buffer pré-gzipado da `/api/reference` | `server.js` |
 | Config/segredos | `dotenv` (`.env`, fora do Git) | `.env` |
+| Validação de entrada | próprio, sem dependência (`req.body` / `req.query`) | `lib/validar.js` |
+| Tipagem | JSDoc + `checkJs` — **sem build e sem dependência em produção** | `lib/tipos.js`, `jsconfig.json` |
 
 ## Estrutura de pastas
 
@@ -72,6 +77,8 @@ TRABALHO/
 │  ├─ mongo.js            Conexão única e cacheada com o Mongo
 │  ├─ storage.js          Cloudinary: upload assinado, URL de entrega e URL que expira
 │  ├─ mailer.js           Envio de email (redefinição de senha e convite de acesso)
+│  ├─ validar.js          Validação de fronteira: recusa operador do Mongo, corta mass assignment
+│  ├─ tipos.js            @typedef JSDoc dos contratos centrais (zero runtime, só editor)
 │  └─ cities.js           Lista de cidades (datalist)
 ├─ public/                        ← servido na raiz; o hub vale para todos os módulos
 │  ├─ index.html                  Hub dos módulos (PDV ativo; PDP e RCA "em breve")

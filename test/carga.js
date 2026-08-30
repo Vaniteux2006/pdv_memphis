@@ -38,6 +38,10 @@ function anota(rota, ms, status, erro) {
 }
 const pct = (a, p) => (a.length ? a[Math.min(a.length - 1, Math.floor((p / 100) * a.length))] : 0);
 
+/**
+ * @param {string} rota rótulo do relatório (não é a URL)
+ * @param {{ method?: string, path: string, ip?: string, cookie?: string, body?: any }} opcoes
+ */
 function req(rota, { method = 'GET', path: p, ip, cookie, body }) {
   return new Promise((resolve) => {
     const data = body == null ? null : Buffer.from(JSON.stringify(body));
@@ -119,7 +123,7 @@ async function main() {
   for (const [rota, s] of Object.entries(stats)) {
     s.ms.sort((a, b) => a - b);
     const n = s.ms.length + s.erros; totalReqs += n; totalErros += s.erros;
-    const ok = Object.entries(s.status).filter(([c]) => c < 500).reduce((a, [, v]) => a + v, 0);
+    const ok = Object.entries(s.status).filter(([c]) => Number(c) < 500).reduce((a, [, v]) => a + v, 0);
     const media = s.ms.reduce((a, b) => a + b, 0) / (s.ms.length || 1);
     console.log(
       rota.padEnd(30) + String(n).padStart(6) +
@@ -127,7 +131,7 @@ async function main() {
       (media.toFixed(0) + 'ms').padStart(8) + (pct(s.ms, 50).toFixed(0) + 'ms').padStart(8) +
       (pct(s.ms, 95).toFixed(0) + 'ms').padStart(8) + (pct(s.ms, 100).toFixed(0) + 'ms').padStart(8) +
       String(s.erros).padStart(7));
-    const inesperados = Object.entries(s.status).filter(([c]) => c >= 500 || c === '0');
+    const inesperados = Object.entries(s.status).filter(([c]) => Number(c) >= 500 || c === '0');
     if (inesperados.length) console.log('   status inesperados: ' + JSON.stringify(Object.fromEntries(inesperados)));
   }
   console.log(`\nCenário B: ${durB.toFixed(1)}s (${(VUS * 5 / durB).toFixed(0)} req/s) | Cenário A: ${durA.toFixed(1)}s (${(LOGINS / durA).toFixed(1)} login/s)`);

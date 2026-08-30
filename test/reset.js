@@ -7,6 +7,11 @@ const { spawn } = require('child_process');
 const path = require('path');
 
 const PORT = 3097;
+/**
+ * @param {string} method
+ * @param {string} p
+ * @param {{ body?: any, cookie?: string }} [opcoes]
+ */
 function req(method, p, { body, cookie } = {}) {
   return new Promise((res, rej) => {
     const data = body == null ? null : Buffer.from(JSON.stringify(body));

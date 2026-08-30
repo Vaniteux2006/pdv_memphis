@@ -1,0 +1,33 @@
+{
+  "//": [
+    "Tipagem no editor sem build e sem tocar no deploy (Bloco 4, fase 1 do PLANO.md).",
+    "Nada aqui roda em produção: o Node ignora este arquivo, o package.json segue intacto",
+    "e o discloud.config continua apontando MAIN=server.js.",
+    "",
+    "typeAcquisition faz o editor buscar sozinho os @types de express/node — por isso",
+    "nenhuma dependência nova entra no projeto. Para conferir por fora do editor:",
+    "  npm i -D --no-save typescript @types/node @types/express && npx tsc --noEmit",
+    "(--no-save = não mexe no package.json; node_modules já está no .gitignore)",
+    "",
+    "public/ fica de fora de propósito: é JS de navegador, sem módulos, e checá-lo aqui",
+    "renderia ruído em vez de erro útil."
+  ],
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "preserve",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "strict": false,
+    "noImplicitAny": false,
+    "maxNodeModuleJsDepth": 0
+  },
+  "typeAcquisition": { "enable": true },
+  "include": ["server.js", "lib/**/*.js", "api/**/*.js", "tools/**/*.js", "test/**/*.js"],
+  "exclude": ["node_modules", "public", "uploads"]
+}
