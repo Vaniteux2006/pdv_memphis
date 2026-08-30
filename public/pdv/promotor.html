@@ -4,14 +4,14 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Memphis PDV — Enviar fotos</title>
-  <meta name="theme-color" content="#1c9cc0" />
+  <meta name="theme-color" content="#0d1116" />
   <link rel="icon" href="/logo-memphis.webp" type="image/webp" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&family=Sacramento&display=swap" media="print" onload="this.media='all'" />
   <link rel="stylesheet" href="/style.css" />
 </head>
-<body>
+<body class="theme-dark">
   <div class="topbar">
     <div class="brand-menu">
       <a class="brand" href="/"><img src="/logo-memphis.webp" alt="Memphis" class="brand-logo" /><span class="pdv-badge">PDV</span></a>
@@ -262,7 +262,10 @@
       document.getElementById('myempty').classList.toggle('hidden', rows.length > 0);
       document.getElementById('mygrid').innerHTML = rows.map(card).join('');
     }
-    const PREAV_COR = { REGULAR: 'var(--yellow)', BOM: 'var(--green)', EXCELENTE: 'var(--purple)' };
+    // preenchimento com texto branco por cima: usa os tokens `-fill`, que sao escuros
+    // nos dois temas. Com --yellow/--green/--purple (que clareiam no escuro pra servirem
+    // de TEXTO), o branco do selo caia pra 2.6:1.
+    const PREAV_COR = { REGULAR: 'var(--yellow-fill)', BOM: 'var(--green-fill)', EXCELENTE: 'var(--purple-fill)' };
     function preavPill(v) {
       if (!v) return '';
       const cor = PREAV_COR[v] || 'var(--muted)';

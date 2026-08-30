@@ -52,6 +52,7 @@ flowchart TB
 | Camada | Tecnologia | Arquivo(s) |
 |--------|-----------|-----------|
 | Frontend | HTML + CSS + JS puro (sem framework, sem build) | `public/` |
+| Tema | **Escuro em todas as 14 páginas**, via `.theme-dark` no `<body>`; os tokens do `:root` seguem definindo a variante clara, que fica dormente | `public/style.css` |
 | Servidor | Node.js + Express | `server.js` |
 | Autenticação | JWT (`jsonwebtoken`) + cookie httpOnly (`cookie-parser`) | `server.js` |
 | Segurança HTTP | `helmet` (CSP) + `express-rate-limit` (login/reset) | `server.js` |
@@ -86,7 +87,7 @@ TRABALHO/
 │  ├─ politica-de-privacidade.html  Política pública (legível ANTES do login)
 │  ├─ robots.txt                  Disallow: / — ferramenta interna, não indexável
 │  ├─ common.js                   Helpers compartilhados (fetch, upload, toast, esc)
-│  ├─ style.css                   Tema Memphis (claro, teal)
+│  ├─ style.css                   Tema Memphis (escuro + vidro; tokens do claro dormentes)
 │  ├─ vendor/jszip.min.js         ZIP montado no navegador
 │  ├─ pdv/                        ← módulo da Campanha de PDV
 │  │  ├─ index.html               Capa do módulo

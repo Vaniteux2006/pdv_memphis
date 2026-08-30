@@ -1,15 +1,20 @@
-// cor de cada tipo de ponto extra (visual)
+// Cor de cada tipo de ponto extra. Estas cores são SEMPRE preenchimento com texto branco
+// por cima (o selo na foto), então a régua aqui é contraste com o branco, não com o fundo
+// da página — e por isso elas não mudam com o tema.
+// ⚠️ Quatro delas não passavam de 4.5:1 e foram escurecidas (teal 3.20, verde 3.42,
+// laranja 3.01, rosa 4.19). Todas fecham agora em ~4.8:1 — a margem existe porque no
+// fio exato o arredondamento ainda reprova. Se acrescentar cor nova, confira contra #fff.
 const PONTO_COR = {
-  'Ilha de produtos': '#1c9cc0',          // teal
-  'Display Exclusivo': '#7b3fbf',         // roxo
-  'Gôndola de caixa': '#2f9e54',          // verde
-  'Cross-merchandising': '#e07a2a',       // laranja
-  'Antes e depois': '#d6457f',            // rosa
-  'Grande volume de produtos': '#3f6fd1', // azul
+  'Ilha de produtos': '#137c99',          // teal    — 4.80:1 com branco
+  'Display Exclusivo': '#7b3fbf',         // roxo    — 6.35:1
+  'Gôndola de caixa': '#248244',          // verde   — 4.80:1
+  'Cross-merchandising': '#b25b16',       // laranja — 4.78:1
+  'Antes e depois': '#d52c70',            // rosa    — 4.76:1
+  'Grande volume de produtos': '#3f6fd1', // azul    — 4.77:1
 };
 // ponto criado pelo admin (aba Listas) ganha cor da paleta pelo nome —
 // determinístico: o mesmo nome tem a mesma cor em qualquer página
-const PONTO_PALETA = ['#0e7a99', '#9c5bd1', '#1f7a3f', '#b85c1e', '#b23a68', '#2f55a4', '#8a6d3b', '#457a8b'];
+const PONTO_PALETA = ['#0e7a99', '#9750d1', '#1f7a3f', '#b5581a', '#b23a68', '#2f55a4', '#8a6d3b', '#457a8b'];
 const corPonto = (p) => PONTO_COR[p] ||
   PONTO_PALETA[[...String(p)].reduce((a, ch) => (a * 31 + ch.charCodeAt(0)) >>> 0, 7) % PONTO_PALETA.length];
 

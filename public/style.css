@@ -10,6 +10,19 @@
   --txt: #4a4a4d;           /* texto */
   --muted: #64676d;         /* cinza com contraste AA sobre branco */
   --line: #e4e5e7;
+  --line-forte: #c9ccd0;    /* contorno de hover — o mesmo papel em qualquer tema */
+
+  /* ⚠️ Dois papeis, duas reguas. `--teal` e cor de MARCA: serve de borda, de icone e de
+     serie de grafico, onde nao ha texto por cima. `--teal-fill` e a superficie que
+     carrega TEXTO BRANCO (botao, aba ativa, cracha) e por isso precisa ser escura o
+     bastante: branco sobre #1c9cc0 da 3.20:1, abaixo do minimo de 4.5:1 — e era assim
+     em toda tela, no botao de acao principal. Os `-fill` sao iguais nos dois temas de
+     proposito: a exigencia vem do texto branco, nao do fundo da pagina. */
+  --teal-fill: #137c99;     /* branco por cima: 4.80:1 */
+  --purple-fill: #7b3fbf;   /* 6.35:1 */
+  --green-fill: #248244;    /* 4.80:1 */
+  --red-fill: #d63430;      /* 4.77:1 */
+  --yellow-fill: #8d6e00;   /* 4.81:1 */
   --bg: #ffffff;            /* página */
   --bg-soft: #f5f6f7;
   --panel: #ffffff;         /* cards */
@@ -62,7 +75,7 @@ a:hover { text-decoration: underline; }
 /* ---------- header / marca ---------- */
 .topbar, .site-header {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 14px 26px; background: #fff; border-top: 3px solid var(--teal);
+  padding: 14px 26px; background: var(--panel); border-top: 3px solid var(--teal);
   border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 30;
   box-shadow: var(--shadow-sm);
   gap: 10px;
@@ -79,7 +92,7 @@ a:hover { text-decoration: underline; }
 .brand-menu { position: relative; }
 .brand-dropdown {
   position: absolute; top: 100%; left: 0; margin-top: 4px; min-width: 220px;
-  background: #fff; border: 1px solid var(--line); border-radius: 10px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
   box-shadow: var(--shadow-md); padding: 6px; z-index: 60;
   opacity: 0; visibility: hidden; transform: translateY(-4px); transition: .14s;
 }
@@ -98,7 +111,7 @@ a:hover { text-decoration: underline; }
 .brand-text b { font-size: 23px; font-weight: 600; color: var(--teal); letter-spacing: .5px; }
 .brand-text small { font-size: 8.5px; letter-spacing: 1.5px; color: var(--muted); text-transform: lowercase; margin-top: 3px; }
 .brand .pdv-badge {
-  font-size: 10px; font-weight: 700; letter-spacing: 1px; color: #fff; background: var(--teal);
+  font-size: 10px; font-weight: 700; letter-spacing: 1px; color: #fff; background: var(--teal-fill);
   padding: 3px 7px; border-radius: 4px; margin-left: 4px; align-self: center;
 }
 
@@ -113,12 +126,12 @@ a:hover { text-decoration: underline; }
 .card h2 { margin: 0 0 14px; font-size: 14px; font-weight: 700; color: var(--ink); text-transform: uppercase; letter-spacing: 1px; }
 label { display: block; font-size: 12.5px; color: var(--muted); margin: 12px 0 5px; font-weight: 600; }
 input, select, textarea {
-  width: 100%; padding: 10px 12px; background: #fff;
+  width: 100%; padding: 10px 12px; background: var(--panel);
   border: 1px solid var(--line); border-radius: var(--radius-sm); color: var(--ink); font-size: 14px;
   font-family: inherit;
   transition: border-color .15s, box-shadow .15s;
 }
-input:hover, select:hover, textarea:hover { border-color: #c9ccd0; }
+input:hover, select:hover, textarea:hover { border-color: var(--line-forte); }
 input:focus, select:focus, textarea:focus { outline: none; border-color: var(--teal); box-shadow: 0 0 0 3px var(--teal-soft); }
 textarea { resize: vertical; min-height: 54px; }
 input[type="checkbox"], input[type="radio"] { width: auto; cursor: pointer; }
@@ -126,7 +139,7 @@ input[type="file"] {
   padding: 9px; background: var(--panel2); border-style: dashed; cursor: pointer;
 }
 input[type="file"]::file-selector-button {
-  border: none; border-radius: 6px; background: var(--teal); color: #fff;
+  border: none; border-radius: 6px; background: var(--teal-fill); color: #fff;
   font-family: inherit; font-size: 12.5px; font-weight: 600; padding: 8px 14px;
   margin-right: 10px; cursor: pointer;
 }
@@ -167,13 +180,13 @@ button.pw-toggle:hover { background: var(--bg-soft); color: var(--ink); }
 
 button {
   cursor: pointer; border: none; border-radius: var(--radius-sm); padding: 10px 18px;
-  font-size: 13px; font-weight: 600; background: var(--teal); color: #fff;
+  font-size: 13px; font-weight: 600; background: var(--teal-fill); color: #fff;
   font-family: inherit; letter-spacing: .3px;
   transition: background .15s, box-shadow .15s, transform .06s;
 }
 button:hover { background: var(--teal-dark); box-shadow: var(--shadow-sm); }
 button:active { transform: translateY(1px); }
-button.secondary { background: #fff; color: var(--ink); border: 1px solid var(--line); }
+button.secondary { background: var(--panel); color: var(--ink); border: 1px solid var(--line); }
 button.secondary:hover { background: var(--bg-soft); }
 button.danger { background: var(--red); }
 button.danger:hover { background: #c33; }
@@ -207,8 +220,8 @@ button:disabled { opacity: .5; cursor: not-allowed; transform: none; box-shadow:
 
 /* ---------- tabs ---------- */
 .tabs { display: flex; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; }
-.tabs button { background: #fff; color: var(--muted); border: 1px solid var(--line); box-shadow: var(--shadow-sm); }
-.tabs button.active { background: var(--teal); color: #fff; border-color: transparent; }
+.tabs button { background: var(--panel); color: var(--muted); border: 1px solid var(--line); box-shadow: var(--shadow-sm); }
+.tabs button.active { background: var(--teal-fill); color: #fff; border-color: transparent; }
 .tabs button:hover:not(.active) { background: var(--bg-soft); color: var(--ink); }
 
 /* tema escuro (hub IM) — remapeia os tokens; o resto do CSS segue usando as vars.
@@ -245,12 +258,21 @@ button:disabled { opacity: .5; cursor: not-allowed; transform: none; box-shadow:
      Como background do body, o navegador propaga pro canvas: mesma aparencia, uma
      camada a menos pra compor, e nada pra dar errado no aparelho fraco. */
   background-color: var(--bg);
+  /* discreto por padrao: vale para as 13 telas de trabalho, onde gradiente forte briga
+     com o dado. A capa pede mais e se identifica com `.capa` (ver abaixo). */
+  background-image:
+    radial-gradient(52rem 30rem at 12% -6%, rgba(28, 156, 192, .10), transparent 60%),
+    radial-gradient(44rem 28rem at 96% 2%, rgba(86, 122, 190, .07), transparent 58%);
+  background-repeat: no-repeat;
+  background-attachment: scroll; /* `fixed` e caro/ignorado no mobile — nao vale o custo */
+}
+/* so a capa: tres brilhos, mais fortes. E ela que precisa de bastante variacao atras dos
+   cartoes pro vidro parecer vidro; as telas de app precisam do contrario. */
+.theme-dark.capa {
   background-image:
     radial-gradient(58rem 42rem at 18% -8%, rgba(28, 156, 192, .16), transparent 62%),
     radial-gradient(46rem 38rem at 92% 8%, rgba(86, 122, 190, .10), transparent 60%),
     radial-gradient(64rem 34rem at 62% 74%, rgba(28, 156, 192, .07), transparent 62%);
-  background-repeat: no-repeat;
-  background-attachment: scroll; /* `fixed` e caro/ignorado no mobile — nao vale o custo */
 }
 .theme-dark .lp-hero h1 { color: var(--ink); }
 .theme-dark ::selection { background: var(--teal); color: #fff; }
@@ -397,10 +419,167 @@ button:disabled { opacity: .5; cursor: not-allowed; transform: none; box-shadow:
   .theme-dark .hub-card:hover { transform: none; }
 }
 
+
+/* ---------- telas de app no escuro (Bloco 5, extensão a todas as páginas) ----------
+   A capa acima é a peça de vitrine; aqui é ferramenta de trabalho, e o equilíbrio muda:
+
+   - O fundo é MUITO mais discreto. Na capa três brilhos fortes dão o que borrar; numa
+     tela de avaliação com tabela, filtro e foto, gradiente forte briga com o dado.
+   - O vidro fica nas superfícies que já eram cartão (`.card`, `.photo`, `.rk-card`,
+     `.guia-panel`) e na `.topbar`. Não entra em campo de formulário nem em linha de
+     lista: são muitos elementos, e blur multiplicado por linha de tabela é exatamente
+     o custo que o Android de entrada não paga.
+   - Escuro aqui não é só estética: avaliar foto contra fundo claro falseia o brilho
+     percebido da imagem. Ferramenta de imagem séria (Lightroom, Photoshop) é escura
+     pelo mesmo motivo. */
+
+.theme-dark {
+  --footer: #0a0e12;
+  --line-forte: #3a434e;
+  /* Semânticas recalculadas para o escuro: as originais foram escolhidas para ler sobre
+     BRANCO e afundam sobre painel escuro (o --amber #9c690d dava 1.9:1). Estes valores
+     mantêm a matiz e passam de 5.6:1 sobre a superfície mais clara do tema. */
+  --green: #40b567;
+  --amber: #d6951f;
+  --red: #de8a87;
+  --purple: #b292d5;
+  --yellow: #c59d0d;
+}
+
+/* topbar: mesma escolha da capa — translúcida, sem blur, porque é grudenta */
+.theme-dark .topbar {
+  background: rgba(13, 17, 22, .9);
+  border-bottom: 1px solid rgba(255, 255, 255, .07);
+  box-shadow: none;
+}
+/* o logo tem wordmark preto; ver a nota na seção da capa */
+.theme-dark .brand-logo { filter: invert(1) hue-rotate(180deg); }
+
+/* as superfícies de conteúdo */
+.theme-dark .card,
+.theme-dark .photo,
+.theme-dark .rk-card,
+.theme-dark .guia-panel,
+.theme-dark .brand-dropdown,
+.theme-dark .graf-dica {
+  background: rgba(255, 255, 255, .045);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  backdrop-filter: blur(18px) saturate(140%);
+  border: 1px solid rgba(255, 255, 255, .10);
+  box-shadow: 0 18px 44px -18px rgba(0, 0, 0, .6), 0 1px 4px rgba(0, 0, 0, .25);
+}
+.theme-dark .card { border-radius: 16px; }
+.theme-dark .photo:hover { box-shadow: 0 26px 56px -20px rgba(0, 0, 0, .7); }
+
+/* campos e botoes: SEM blur. São dezenas por tela, e cada superfície borrada é uma
+   camada a compor — é aqui que o custo vira travamento em vez de charme. */
+.theme-dark input,
+.theme-dark select,
+.theme-dark textarea {
+  background: rgba(0, 0, 0, .26);
+  border-color: rgba(255, 255, 255, .12);
+  color: var(--ink);
+}
+.theme-dark input::placeholder,
+.theme-dark textarea::placeholder { color: var(--muted); }
+.theme-dark input:hover,
+.theme-dark select:hover,
+.theme-dark textarea:hover { border-color: var(--line-forte); }
+/* a seta do <select> nativo é desenhada pelo SO: sem isto ela sai preta sobre campo escuro */
+.theme-dark select { color-scheme: dark; }
+
+.theme-dark button.secondary,
+.theme-dark .tabs button,
+.theme-dark .subtabs button,
+.theme-dark .guia-tabs button {
+  background: rgba(255, 255, 255, .06);
+  border-color: rgba(255, 255, 255, .11);
+  color: var(--txt);
+  box-shadow: none;
+}
+.theme-dark button.secondary:hover,
+.theme-dark .tabs button:hover:not(.active),
+.theme-dark .subtabs button:hover:not(.active),
+.theme-dark .guia-tabs button:hover[aria-selected="false"] {
+  background: rgba(255, 255, 255, .11);
+  color: var(--ink);
+}
+
+/* superfícies "soft" que no claro eram cinza-clarinho e no escuro precisam AFUNDAR,
+   não subir — senão o cartão e o conteúdo dele trocam de profundidade */
+.theme-dark .list-item,
+.theme-dark .kpi,
+.theme-dark .guia-card,
+.theme-dark .ad-bar,
+.theme-dark .ad-trilho,
+.theme-dark .gal-imgs,
+.theme-dark .rk-fotos { background: rgba(0, 0, 0, .24); border-color: rgba(255, 255, 255, .08); }
+.theme-dark .list-item:hover { background: rgba(255, 255, 255, .07); border-color: var(--line-forte); }
+
+/* o toast pinta o fundo com --ink, que no escuro é quase branco: texto branco sumiria */
+.theme-dark .toast { background: #20262e; border-color: rgba(255, 255, 255, .14); color: var(--ink); }
+.theme-dark .toast.ok { background: #14522f; border-color: var(--green); color: #eafaf0; }
+.theme-dark .toast.bad { background: #5a2321; border-color: var(--red); color: #fdecec; }
+
+/* selos e avisos: as versões claras usam a cor semântica com 12-16% de fundo, o que
+   sobre escuro vira quase invisível */
+/* Mesma decisao do selo da capa: tinta ESCURA, nao clara. Com 18% da propria cor o fundo
+   subia e o texto do selo caia pra 3.74:1 (verde) e 4.29:1 (ambar). Escurecendo, a cor
+   segue identificando o estado pela BORDA e pelo texto, e o contraste sobe. */
+.theme-dark .pill { background: rgba(0, 0, 0, .22); border-color: rgba(255, 255, 255, .12); }
+.theme-dark .pill.on { background: rgba(0, 0, 0, .28); color: var(--green); border-color: rgba(64, 181, 103, .45); }
+.theme-dark .pill.warn { background: rgba(0, 0, 0, .28); color: var(--amber); border-color: rgba(214, 149, 31, .45); }
+.theme-dark .subtabs button.active .pill { border-color: transparent; }
+.theme-dark .guia-card.ruim { background: rgba(222, 138, 135, .10); border-color: rgba(222, 138, 135, .32); }
+.theme-dark .guia-nota { background: rgba(28, 156, 192, .14); color: #8fd9f0; }
+.theme-dark .guia-nota.alerta { background: rgba(214, 149, 31, .14); color: var(--amber); }
+.theme-dark .gal-presenca { background: rgba(178, 146, 213, .12); border-color: rgba(178, 146, 213, .45); }
+.theme-dark .guia-item .n { background: rgba(28, 156, 192, .18); color: var(--teal-dark); }
+.theme-dark .feature .ic { background: rgba(28, 156, 192, .16); box-shadow: inset 0 0 0 1px rgba(87, 201, 232, .22); }
+
+/* a landing de módulo (pdv/, pdp/, rca/) no escuro */
+.theme-dark .lp-hero { background: transparent; border-bottom: 0; }
+/* Titulo de secao acompanha o h1: um h1 grande e leve com um h2 pequeno, negrito e em
+   versalete logo abaixo sao duas tipografias diferentes na mesma pagina. O texto no HTML
+   ja esta em caixa normal — o versalete era so `text-transform`, entao sai de graca. */
+.theme-dark .lp-section h2 {
+  font-size: clamp(24px, 2.6vw, 34px); font-weight: 300;
+  text-transform: none; letter-spacing: -.015em; margin-bottom: 10px;
+}
+.theme-dark .lp-section .sub { font-size: 15.5px; }
+.theme-dark .steps { background: rgba(0, 0, 0, .2); border-color: rgba(255, 255, 255, .07); }
+.theme-dark .btn-cta.outline { color: var(--teal-dark); border-color: var(--teal-dark); }
+.theme-dark .btn-cta.outline:hover { background: var(--teal); color: #fff; border-color: var(--teal); }
+
+/* o anel que separa o marcador da linha no gráfico tinha a cor da superfície SÓLIDA;
+   com a superfície translúcida, precisa da cor do que está de fato atrás */
+.theme-dark .graf-ponto { stroke: #171d24; }
+
+/* fotos: a moldura clara virava um halo brilhante em volta da imagem */
+.theme-dark .photo img,
+.theme-dark .rk-fotos img { background: rgba(0, 0, 0, .35); }
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .theme-dark .card,
+  .theme-dark .photo,
+  .theme-dark .rk-card,
+  .theme-dark .guia-panel,
+  .theme-dark .brand-dropdown,
+  .theme-dark .graf-dica { background: #1b222b; border-color: #2b333d; }
+  .theme-dark .topbar { background: #0d1116; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-dark .photo,
+  .theme-dark .feature { transition: none; }
+  .theme-dark .photo:hover,
+  .theme-dark .feature:hover { transform: none; }
+}
+
 /* ---------- hub IM (portal de módulos: PDV / PDP / RCA) ---------- */
 .hub-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px; max-width: 900px; margin: 0 auto; }
 .hub-card {
-  display: block; background: #fff; border: 1px solid var(--line); border-radius: var(--radius);
+  display: block; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
   padding: 26px 22px; text-align: center; box-shadow: var(--shadow-sm); color: inherit; text-decoration: none;
   transition: box-shadow .18s, transform .18s;
 }
@@ -418,7 +597,7 @@ button:disabled { opacity: .5; cursor: not-allowed; transform: none; box-shadow:
 .rk-edicao { margin-bottom: 22px; }
 .podio { display: flex; gap: 16px; justify-content: center; align-items: flex-end; flex-wrap: wrap; margin-top: 14px; }
 .rk-card {
-  background: #fff; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden;
   box-shadow: var(--shadow-sm); width: 240px; max-width: 100%; position: relative; text-align: center;
 }
 /* pódio clássico: 1º no meio e maior, 2º à esquerda, 3º à direita */
@@ -442,9 +621,9 @@ button:disabled { opacity: .5; cursor: not-allowed; transform: none; box-shadow:
 
 /* sub-abas dentro da aba Fotos (a avaliar / aprovadas / recusadas) */
 .subtabs { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
-.subtabs button { background: #fff; color: var(--muted); border: 1px solid var(--line); box-shadow: var(--shadow-sm); }
-.subtabs button.active { background: var(--teal); color: #fff; border-color: transparent; }
-.subtabs button.active .pill { background: rgba(255, 255, 255, .22); color: #fff; border-color: transparent; }
+.subtabs button { background: var(--panel); color: var(--muted); border: 1px solid var(--line); box-shadow: var(--shadow-sm); }
+.subtabs button.active { background: var(--teal-fill); color: #fff; border-color: transparent; }
+.subtabs button.active .pill { background: rgba(0, 0, 0, .28); color: #fff; border-color: transparent; }
 .subtabs button:hover:not(.active) { background: var(--bg-soft); color: var(--ink); }
 
 /* ---------- galeria de avaliação (uma foto por vez) ---------- */
@@ -467,7 +646,7 @@ button:disabled { opacity: .5; cursor: not-allowed; transform: none; box-shadow:
 /* ---------- grid de fotos ---------- */
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
 .photo {
-  background: #fff; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden;
   box-shadow: var(--shadow-sm); transition: box-shadow .18s, transform .18s;
 }
 .photo:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }
@@ -492,7 +671,7 @@ button:disabled { opacity: .5; cursor: not-allowed; transform: none; box-shadow:
   border-radius: var(--radius-sm); margin-bottom: 6px; font-size: 13px;
   transition: border-color .15s, background .15s;
 }
-.list-item:hover { border-color: #d2d5d9; background: #fff; }
+.list-item:hover { border-color: var(--line-forte); background: var(--panel); }
 .list-item button { padding: 4px 10px; font-size: 12px; }
 
 /* ---------- aderência (números da campanha) ---------- */
@@ -588,8 +767,8 @@ button.modal-close:hover { background: rgba(255, 255, 255, .28); }
   box-shadow: var(--shadow-lg); max-width: min(92vw, 480px);
 }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
-.toast.ok { background: var(--green); border-color: var(--green); }
-.toast.bad { background: var(--red); border-color: var(--red); }
+.toast.ok { background: var(--green-fill); border-color: var(--green-fill); }
+.toast.bad { background: var(--red-fill); border-color: var(--red-fill); }
 .hidden { display: none !important; }
 
 @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
@@ -611,13 +790,13 @@ button.modal-close:hover { background: rgba(255, 255, 255, .28); }
 }
 .lp-hero p { font-size: 18px; color: var(--txt); max-width: 640px; margin: 0 auto 30px; }
 .btn-cta {
-  display: inline-block; background: var(--teal); color: #fff; padding: 14px 38px;
+  display: inline-block; background: var(--teal-fill); color: #fff; padding: 14px 38px;
   border-radius: 8px; font-weight: 600; font-size: 15px; letter-spacing: 1px; text-transform: uppercase;
   transition: background .15s, box-shadow .15s, transform .15s;
 }
 .btn-cta:hover { background: var(--teal-dark); text-decoration: none; box-shadow: var(--shadow-md); transform: translateY(-1px); }
 .btn-cta.outline { background: transparent; color: var(--teal-dark); border: 2px solid var(--teal); margin-left: 12px; }
-.btn-cta.outline:hover { background: var(--teal); color: #fff; }
+.btn-cta.outline:hover { background: var(--teal-fill); color: #fff; }
 
 .lp-section { max-width: 1080px; margin: 0 auto; padding: 64px 22px; }
 .lp-section h2 {
@@ -626,7 +805,7 @@ button.modal-close:hover { background: rgba(255, 255, 255, .28); }
 }
 .lp-section .sub { text-align: center; color: var(--muted); margin: 0 0 40px; }
 .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 22px; }
-.feature { background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 28px 24px; text-align: center; transition: transform .15s, box-shadow .15s; }
+.feature { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 28px 24px; text-align: center; transition: transform .15s, box-shadow .15s; }
 .feature:hover { transform: translateY(-4px); box-shadow: 0 10px 28px rgba(28, 156, 192, .12); }
 .feature .ic {
   width: 54px; height: 54px; margin: 0 auto 16px; display: grid; place-items: center;
@@ -640,7 +819,7 @@ button.modal-close:hover { background: rgba(255, 255, 255, .28); }
 .steps-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 26px; }
 .step { text-align: center; }
 .step .num {
-  width: 44px; height: 44px; border-radius: 50%; background: var(--teal); color: #fff;
+  width: 44px; height: 44px; border-radius: 50%; background: var(--teal-fill); color: #fff;
   display: grid; place-items: center; font-weight: 700; margin: 0 auto 14px; font-size: 17px;
   box-shadow: 0 4px 12px rgba(28, 156, 192, .3);
 }
@@ -657,11 +836,11 @@ button.modal-close:hover { background: rgba(255, 255, 255, .28); }
 .guia { max-width: 900px; margin: 0 auto; }
 .guia-tabs { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-bottom: 24px; }
 .guia-tabs button {
-  background: #fff; color: var(--muted); border: 1px solid var(--line);
+  background: var(--panel); color: var(--muted); border: 1px solid var(--line);
   border-radius: 999px; padding: 9px 16px; box-shadow: var(--shadow-sm);
 }
 .guia-tabs button:hover[aria-selected="false"] { background: var(--bg-soft); color: var(--ink); }
-.guia-tabs button[aria-selected="true"] { background: var(--teal); color: #fff; border-color: transparent; }
+.guia-tabs button[aria-selected="true"] { background: var(--teal-fill); color: #fff; border-color: transparent; }
 
 .guia-panel {
   background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
@@ -726,8 +905,17 @@ button.modal-close:hover { background: rgba(255, 255, 255, .28); }
   .theme-dark .hub-card { padding: 22px 20px; border-radius: 18px; }
   .theme-dark .hub-card .ic { width: 52px; height: 52px; font-size: 24px; margin-bottom: 14px; }
   .theme-dark .hub-card p { margin-bottom: 14px; }
-  /* blur mais barato no aparelho fraco, que e onde ele custa */
-  .theme-dark .hub-card { -webkit-backdrop-filter: blur(14px) saturate(140%); backdrop-filter: blur(14px) saturate(140%); }
+  /* Blur mais barato no aparelho fraco, que e onde ele custa. Vale pra TODAS as
+     superficies de vidro, nao so as da capa: numa tela de app ha varios cartoes ao
+     mesmo tempo, e o custo se soma. */
+  .theme-dark .hub-card,
+  .theme-dark .card,
+  .theme-dark .photo,
+  .theme-dark .rk-card,
+  .theme-dark .guia-panel {
+    -webkit-backdrop-filter: blur(12px) saturate(135%);
+    backdrop-filter: blur(12px) saturate(135%);
+  }
   .theme-dark .lp-footer { padding: 32px 20px 36px; }
 
   /* abas do guia: rolam na horizontal em vez de quebrar em quatro linhas */

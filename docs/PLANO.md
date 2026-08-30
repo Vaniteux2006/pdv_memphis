@@ -8,9 +8,8 @@
 > Falta só o **Bloco 4 fases 2–3** (converter para `.ts`), parado por decisão do próprio
 > plano: só depois do piloto estável.
 >
-> O Bloco 5 entregou o **alvo mínimo** — `public/index.html` + `public/style.css`. A
-> pergunta de escopo que a seção marca com ⚠️ (se `login.html` e `promotor.html`
-> acompanham) **continua aberta** e é decisão do dono.
+> A pergunta de escopo que a seção do Bloco 5 marca com ⚠️ foi **respondida pelo dono em
+> 30/ago/2026: "sim, todos"**. A estética de vidro foi estendida às **14 páginas**.
 
 ---
 
@@ -1349,18 +1348,32 @@ Pedido de ago/2026: deixar a **capa** mais bonita, com detalhes de vidro e esté
 próxima à da Apple.
 
 **Alvo mínimo:** `public/index.html` (o hub com os três módulos) + `public/style.css`.
-⚠️ **Confirmar com o usuário** se para nas outras telas ou se `login.html` e
-`promotor.html` acompanham — "ao menos a capa" sugere que o resto é bem-vindo, mas
-não foi pedido.
+~~⚠️ **Confirmar com o usuário** se para nas outras telas ou se `login.html` e
+`promotor.html` acompanham~~ — ✅ **respondido em 30/ago/2026: "sim, todos".** O escopo
+final são as **14 páginas**.
 
-> ✅ **FEITO (30/ago/2026) — alvo mínimo.** A pergunta acima **segue aberta**: só a capa
-> mudou. `login.html` e `promotor.html` estão como estavam.
+> ✅ **FEITO (30/ago/2026).** Primeiro o alvo mínimo (a capa); depois, com o "sim, todos"
+> do dono, as **14 páginas**.
 >
-> **Como o escopo foi contido.** `.theme-dark` está só no `public/index.html`, então virou
-> o gancho: **todo** o CSS novo está preso a ele. Isso importa porque `.lp-*` e `.hub-*`
-> são compartilhados com `pdv/`, `pdp/` e `rca/` — sem o escopo, redesenhar a capa
-> redesenharia as três landings de tabela. Verificado no navegador: as outras telas
-> continuam idênticas.
+> **Arquitetura da extensão.** Não foi override por tela — teria virado dívida na hora. O
+> caminho foi fazer os **tokens** serem a fonte única:
+> 1. Trocar as superfícies com `#fff` cravado por `var(--panel)` etc. Isso é neutro: no
+>    tema claro `--panel` **é** `#ffffff`, então nada mudou de aparência ao fazer a troca.
+> 2. Dar valores de escuro aos tokens que faltavam (`--footer`, `--line-forte`) e
+>    recalcular os semânticos: `--green`, `--amber`, `--red`, `--purple`, `--yellow` foram
+>    escolhidos para ler sobre BRANCO e afundavam sobre painel escuro (o `--amber #9c690d`
+>    dava 1,9:1).
+> 3. `.theme-dark` no `<body>` das 14 páginas, e o vidro escopado nele.
+>
+> O tema claro **continua definido** no `:root` e fica dormente. É o que permite voltar
+> atrás mudando uma classe, em vez de reescrever a folha.
+>
+> ⚠️ **A capa e as telas de trabalho pedem coisas opostas do fundo.** A capa precisa de
+> bastante variação atrás dos cartões (é o que faz o vidro parecer vidro); uma tela com
+> tabela, filtro e foto precisa do contrário — gradiente forte briga com o dado. Por isso
+> a capa carrega uma segunda classe (`.capa`) com brilhos mais fortes, e `.theme-dark`
+> sozinho fica com a versão discreta. Sem essa separação, o gradiente da capa vazava para
+> as 13 telas restantes — foi o que aconteceu na primeira tentativa.
 >
 > **As duas restrições ⚠️ da seção, e o que aconteceu com cada uma:**
 >
@@ -1394,6 +1407,27 @@ não foi pedido.
 >   símbolo. Se um dia existir uma versão clara do arquivo, troque a imagem e apague o filtro.
 > - **Faltava o link da política** no rodapé do hub e do login. O manifesto do 1.1 previa
 >   os dois e nenhum tinha entrado. Ambos foram incluídos.
+>
+> **🔴 O achado que apareceu ao auditar as 14 telas — e que não era do tema escuro.**
+> A auditoria de contraste (rodada dentro da página, compondo a pilha real de fundos)
+> encontrou 9 reprovações. **Sete eram pré-existentes** e valiam igual no tema claro:
+> `#fff` sobre `--teal` dá **3,20:1**, e isso era o **botão de ação principal de toda
+> tela**, mais a aba ativa, o crachá e quatro das seis cores de ponto extra.
+>
+> A causa é sempre a mesma: **a mesma variável servia de cor de marca** (borda, ícone,
+> série de gráfico, onde não há texto por cima) **e de superfície que carrega texto
+> branco** — dois papéis com exigências opostas. No tema claro isso passava despercebido;
+> no escuro explodiu, porque `--purple` e `--green` foram clareados para servir de TEXTO
+> e continuavam sendo usados como PREENCHIMENTO com branco por cima (2,6:1).
+>
+> Resolvido separando os papéis: `--teal-fill`, `--purple-fill`, `--green-fill`,
+> `--red-fill`, `--yellow-fill`. Todos ≥4,76:1 com branco e **iguais nos dois temas**, de
+> propósito — a exigência vem do texto branco, não do fundo da página.
+> ⚠️ Ao acrescentar cor nova, pergunte primeiro **qual papel ela tem**. Se for
+> preenchimento com texto por cima, a régua é o contraste com o texto, não com a página.
+>
+> **Estado final:** 0 reprovações em login, cadastro, painel (abas Fotos, Aderência e
+> Gráficos), promotor, política, ranking, 404, o hub e as três landings de módulo.
 >
 > **O que NÃO foi feito, e por quê.** A seção sugere trocar Montserrat pelo stack de
 > sistema para remover o `fonts.googleapis.com` e apertar a CSP. Não dá para fazer isso
@@ -1547,7 +1581,8 @@ explica o **porquê** e as armadilhas — este manifesto é índice, não substi
 | `public/pdv/admin.html` | 1.0, 1.5.1, 1.5.2, 1.8 | Campos institucionais na aba Listas · banner de escalonamento · motivo obrigatório ao recusar · três botões destrutivos |
 | `public/pdv/ranking.html` | 1.5.3 | Modo quadro de honra para edições passadas |
 | ✅ `public/index.html`, `public/pdv/login.html` | 1.1, 5 | Link da política no rodapé — **tinha ficado de fora do Bloco 1**; entrou junto com a capa |
-| ✅ `public/index.html` + `public/style.css` | 5 | Capa com estética de vidro, escopada em `.theme-dark` |
+| ✅ `public/index.html` + `public/style.css` | 5 | Capa com estética de vidro (`.theme-dark.capa`) |
+| ✅ as 14 páginas de `public/` + `common.js` | 5 | Estética estendida a todas as telas: `.theme-dark` no `<body>`, tokens `-fill` separados dos de marca |
 | `test/smoke.js` | todos | Casos novos — ver "Definição de pronto" |
 | `test/pentest.js` | 0, 2 | Whitelist de `pontosExtra` · promotor **não** recebe `promotores[]` |
 | `docs/01`…`08` + `docs/README.md` | 3.3 | Defasagem: 13 endpoints, coleções, índices, módulos `pdp`/`rca` |
