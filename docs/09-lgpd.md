@@ -44,6 +44,7 @@ Legenda de acesso: **P** = o próprio titular · **E** = equipe conforme permiss
 | `name` | Identificar quem enviou; atribuir pagamento e ranking | Enquanto a conta existir | P, E (`contas`) |
 | `email` | Login, convite de acesso, redefinição de senha | Enquanto a conta existir | P, E (`contas`) |
 | `telefone` | Contato operacional da campanha | Enquanto a conta existir | P, E (`contas`) |
+| `avatar` (foto de perfil no Cloudinary, **opcional**) | Identificação visual na própria conta e na capa | Enquanto a conta existir — sai junto na exclusão, na exclusão completa do titular e no reset | P (a própria); ninguém mais a vê |
 | `grupo`, `regiao`, `setor`, `matricula` | Recortes de gestão da campanha | Enquanto a conta existir | P, E (`contas`) |
 | `passwordHash` | Autenticação | Enquanto a conta existir | — (ninguém lê; **bcrypt**, nunca em texto) |
 | `resetTokenHash` + `resetTokenExp` | Redefinição de senha / convite | 1h (reset) ou 7 dias (convite), **uso único** | — (só o sha256 é guardado) |

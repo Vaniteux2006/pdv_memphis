@@ -314,9 +314,11 @@
       const iniciais = nome.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join('').toUpperCase() || '?';
       const primeiro = nome.split(/\s+/)[0] || me.email;
 
+      // o chip leva à conta (/user/); os portões vêm antes, como em tudo
+      const conta = painel.startsWith('/pdv/admin') || painel.startsWith('/pdv/promotor') ? '/user/' : painel;
       document.getElementById('hdr-auth').innerHTML =
-        `<a class="user-chip" href="${painel}" title="${esc(nome)}">` +
-          `<span class="avatar" aria-hidden="true">${esc(iniciais)}</span>` +
+        `<a class="user-chip" href="${conta}" title="${esc(nome)} · minha conta">` +
+          `<span class="avatar" aria-hidden="true">${me.avatarUrl ? `<img src="${esc(me.avatarUrl)}" alt="" />` : esc(iniciais)}</span>` +
           `<span class="nome">${esc(primeiro)}</span></a>` +
         '<button type="button" class="user-sair" onclick="logout()">Sair</button>';
 

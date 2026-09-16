@@ -32,6 +32,7 @@ if (isProd && JWT_SECRET === 'dev-secret-troque')
 // pastas permitidas pra upload direto (o navegador sobe a foto direto no Cloudinary)
 const PASTAS = {
   fotos: 'memphis-pdv/fotos',
+  avatars: 'memphis-pdv/avatars', // foto de perfil (opcional), redimensionada no navegador
 };
 
 // headers de segurança (helmet) + CSP liberando só as origens que usamos (Cloudinary, Google Fonts)
@@ -260,6 +261,45 @@ app.post('/api/change-password', requireAuth, ah(async (req, res) => {
   } catch (e) { res.status(400).json({ error: e.message }); }
 }));
 
+// ---------- a própria conta (/user/) ----------
+// O que cada um edita sozinho: telefone e foto, todo mundo; nome, só admin — pro promotor
+// o nome é a identidade do pagamento e do ranking, e reabrir esse campo desfaria o que o
+// Bloco 2 fechou (ele pede correção pela fila, como na tela de envio). E-mail tem rota
+// própria porque é a identidade de login: exige a senha atual.
+const RE_AVATAR_ID = new RegExp('^' + PASTAS.avatars + '/[A-Za-z0-9_-]{1,80}$');
+app.patch('/api/me', requireAuth, ah(async (req, res) => {
+  try {
+    const campos = v.objetoParcial(req.body, {
+      telefone: v.texto({ max: 30 }),
+      name: v.texto({ obrigatorio: true, min: 2, max: 120, rotulo: 'o nome' }),
+    });
+    if (campos.name !== undefined && req.user.role !== 'admin')
+      return res.status(400).json({ error: 'Promotor não troca o próprio nome por aqui — peça a correção à equipe.' });
+    // foto: `{ publicId }` que o navegador acabou de subir na pasta de avatares, ou null pra tirar
+    if ('avatar' in req.body) {
+      const a = req.body.avatar;
+      if (a !== null && !(a && typeof a === 'object' && RE_AVATAR_ID.test(String(a.publicId || ''))))
+        return res.status(400).json({ error: 'Foto inválida' });
+      const anterior = await db.setAvatar(req.user.id, a ? { publicId: a.publicId } : null);
+      if (anterior && anterior.publicId !== (a && a.publicId)) await store.remove(anterior.publicId, 'image');
+    }
+    if (Object.keys(campos).length) await db.updateUser(req.user.id, campos);
+    res.json({ ok: true });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+}));
+app.post('/api/me/email', requireAuth, ah(async (req, res) => {
+  try {
+    const { email, password } = v.objeto(req.body, {
+      email: v.email({ obrigatorio: true, dominioCompleto: true, rotulo: 'o e-mail' }),
+      password: v.texto({ obrigatorio: true, max: 200, rotulo: 'a senha atual' }),
+    });
+    const u = await db.findUserById(req.user.id);
+    if (!(await db.checkPassword(u, password))) return res.status(400).json({ error: 'Senha atual incorreta' });
+    await db.updateUser(req.user.id, { email });
+    res.json({ ok: true, email });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+}));
+
 // ---------- recuperação de senha (link de redefinição) ----------
 app.post('/api/forgot-password', resetLimiter, ah(async (req, res) => {
   const info = await db.createResetToken(req.body.email);
@@ -292,6 +332,7 @@ app.get('/api/me', requireAuth, ah(async (req, res) => {
     grupo: req.user.grupo || '', regiao: req.user.regiao || '', telefone: req.user.telefone || '',
     setor: req.user.setor || '', matricula: req.user.matricula ?? null,
     permissions: db.permissoesDe(req.user),
+    avatarUrl: req.user.avatar ? store.urlFor(req.user.avatar.publicId, 'image', { otimizada: true }) : null,
     // o front usa isto pra levar à tela de aceite. Vai mesmo com o bloqueio desligado:
     // assim a tela já aparece no piloto, e ligar a env vira só o momento de trancar.
     aceiteVersao: req.user.aceiteVersao || null,
@@ -740,8 +781,10 @@ app.post('/api/admin/users/:id/anonimizar', requireAuth, requirePerm('contas'), 
     if (completo && !db.temPerm(req.user, '*'))
       return res.status(403).json({ error: 'Exclusão completa exige acesso total (crachá)' });
     if (completo) {
+      const alvo = await db.findUserById(req.params.id); // antes de apagar: a foto de perfil sai junto
       const subs = await db.excluirTitularCompleto(req.params.id);
       for (const s of subs) for (const img of imagensDe(s)) await store.remove(img.storedFile, img.resourceType || 'image');
+      if (alvo && alvo.avatar) await store.remove(alvo.avatar.publicId, 'image');
       await auditar(req, { acao: db.ACOES.EXCLUIU_TITULAR, alvo: req.params.id, qtd: subs.length });
       return res.json({ ok: true, modo: 'completo', submissoes: subs.length });
     }
@@ -754,7 +797,8 @@ app.post('/api/admin/users/:id/anonimizar', requireAuth, requirePerm('contas'), 
 
 app.delete('/api/admin/users/:id', requireAuth, requirePerm('contas'), ah(async (req, res) => {
   try {
-    await db.deleteUser(req.params.id);
+    const { avatar } = await db.deleteUser(req.params.id);
+    if (avatar) await store.remove(avatar.publicId, 'image');
     await auditar(req, { acao: db.ACOES.EXCLUIU_CONTA, alvo: req.params.id });
     res.json({ ok: true });
   }
@@ -1342,6 +1386,7 @@ app.post('/api/admin/reset-cadastros', requireAuth, requirePerm('*'), ah(async (
     return res.status(500).json({ error: 'Backup falhou — nada foi apagado. ' + e.message });
   }
   const r = await db.resetarCadastros(req.user.id);
+  if (r.avatars.length) await store.removeMany(r.avatars.map((a) => ({ publicId: a.publicId })));
   await auditar(req, { acao: db.ACOES.RESETOU_CADASTROS, qtd: r.contas,
     detalhe: `${r.contas} conta(s), ${r.promotores} nome(s), ${r.pendentes} pendente(s), ${r.retornos} retorno(s) · backup ${backup.storedFile}` });
   res.json({ ok: true, ...r, backup: backup.storedFile });

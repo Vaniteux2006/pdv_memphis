@@ -21,7 +21,9 @@ enviado automaticamente pelo navegador. Erros retornam `{ "error": "mensagem" }`
 |--------|------|--------|-------|----------|
 | POST | `/api/login` | 🔓 | `{ email, password }` | `{ role, name, mustChangePassword, precisaAceitar }` + `Set-Cookie: mp_token` · 401 se inválido · **rate-limit** 10 falhas/15min (sucesso não conta) |
 | POST | `/api/logout` | 🔓 | — | `{ ok: true }` + limpa o cookie |
-| GET | `/api/me` | 🔑 | — | `{ id, email, name, role, mustChangePassword, grupo, regiao, telefone, setor, matricula, permissions, aceiteVersao, precisaAceitar, politicaVersao }` |
+| GET | `/api/me` | 🔑 | — | `{ id, email, name, role, mustChangePassword, grupo, regiao, telefone, setor, matricula, permissions, avatarUrl, aceiteVersao, precisaAceitar, politicaVersao }` — `avatarUrl` é URL assinada da foto de perfil, ou `null` |
+| PATCH | `/api/me` | 🔑 | `{ telefone?, name?, avatar? }` | A **própria** conta (`/user/`). `telefone` todo mundo; `name` só admin (promotor pede correção pela fila — o nome é a identidade do pagamento); `avatar` = `{ publicId }` recém-subido em `memphis-pdv/avatars/` (validado por regex) ou `null` pra tirar — a foto anterior é apagada do Cloudinary. |
+| POST | `/api/me/email` | 🔑 | `{ email, password }` | Troca o e-mail de login — exige a senha atual e domínio completo. Duplicado → 400. |
 | POST | `/api/change-password` | 🔑 | `{ currentPassword, newPassword }` | Troca a **própria** senha (obrigatória no 1º login quando `mustChangePassword=true` — o front redireciona pra `trocar-senha.html`). Renova o token. |
 | POST | `/api/forgot-password` | 🔓 | `{ email }` | Sempre `{ ok: true }` (anti-enumeração). Gera token (hash + 1h) e **envia link** por email (`redefinir.html?token=`). Rate-limit 20/15min. Em dev sem SMTP devolve `devLink`. |
 | POST | `/api/reset-password` | 🔓 | `{ token, password }` | Redefine a senha se o token for válido/não expirado/uso único. 400 se inválido. |
@@ -39,7 +41,7 @@ enviado automaticamente pelo navegador. Erros retornam `{ "error": "mensagem" }`
 | PATCH | `/api/admin/institucionais` | 👑 `listas` | Edita os campos acima. Contato/versão exigem `listas`; `razaoSocial`, `cnpj` e `enderecoMatriz` exigem **acesso total** (`*`) — pedir sem ter dá **400**, não silêncio. |
 | GET | `/api/reference` | 🔑 | Maior payload do app, servido de **buffer pré-gzipado — um por perfil**. Admin recebe tudo; **promotor NÃO recebe `promotores[]` nem `grupos[]`** (Bloco 2: ninguém vê o nome de ninguém). |
 | GET | `/api/check-promotor?nome=` | 👑 `listas` | Checa o nome no banco: `{ existe, sugestoes:[...] }`. **Passou a exigir admin** — era o vazamento mais direto de nomes de colegas. |
-| GET | `/api/upload-signature?tipo=fotos` | 🔑 | Assinatura p/ upload direto no Cloudinary: `{ signature, timestamp, apiKey, cloudName, folder, type }` |
+| GET | `/api/upload-signature?tipo=fotos\|avatars` | 🔑 | Assinatura p/ upload direto no Cloudinary: `{ signature, timestamp, apiKey, cloudName, folder, type }` |
 
 ## Cadastro público (sign up)
 

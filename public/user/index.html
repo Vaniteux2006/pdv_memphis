@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Memphis — Minha conta</title>
+  <meta name="theme-color" content="#0d1116" />
+  <link rel="icon" href="/logo-memphis.webp" type="image/webp" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap" media="print" onload="this.media='all'" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body class="theme-dark">
+  <div class="topbar">
+    <a class="brand" href="/"><img src="/logo-memphis.webp" alt="Memphis" class="brand-logo" /></a>
+    <div class="topbar-right"><a id="voltar" href="/pdv/" style="font-size:13px;">← Voltar ao painel</a> <button class="ghost" onclick="logout()">Sair</button></div>
+  </div>
+
+  <main class="wrap perfil">
+    <!-- cabeçalho: foto + nome + papel -->
+    <div class="card perfil-topo">
+      <div class="perfil-avatar" id="avatar-wrap">
+        <img id="avatar-img" alt="" hidden />
+        <span id="avatar-ini" aria-hidden="true"></span>
+      </div>
+      <div style="flex:1;min-width:200px;">
+        <h1 id="p-nome" style="margin:0 0 4px;font-size:22px;font-weight:600;">—</h1>
+        <div class="muted" id="p-email">—</div>
+        <div style="margin-top:8px;"><span class="pill" id="p-papel">—</span></div>
+      </div>
+      <div class="perfil-foto-acoes">
+        <input type="file" id="foto-file" accept="image/*" class="hidden" />
+        <button type="button" class="secondary" id="foto-trocar">📷 Trocar foto</button>
+        <button type="button" class="ghost hidden" id="foto-remover">Remover foto</button>
+        <div class="muted" style="font-size:12px;margin-top:6px;">Opcional. Vira um quadrado de 320px antes de subir.</div>
+      </div>
+    </div>
+
+    <!-- dados de cadastro -->
+    <div class="card">
+      <h2>Seus dados</h2>
+      <!-- admin edita o nome; promotor só lê (o nome é a identidade do pagamento e do ranking —
+           quem corrige é a equipe, pela fila de correções, como na tela de envio) -->
+      <div id="nome-admin" class="hidden">
+        <label for="nome">Nome</label>
+        <div class="row" style="align-items:flex-end;">
+          <div style="flex:1;min-width:220px;"><input id="nome" maxlength="120" /></div>
+          <button type="button" id="nome-salvar">Salvar nome</button>
+        </div>
+      </div>
+      <div id="nome-promotor" class="hidden" style="line-height:1.8;font-size:14px;">
+        <div><span class="muted">Nome:</span> <b id="d-nome">—</b></div>
+        <div><span class="muted">Grupo:</span> <b id="d-grupo">—</b> &nbsp;·&nbsp; <span class="muted">Região:</span> <b id="d-regiao">—</b></div>
+        <div id="d-extra" class="hidden"><span class="muted">Setor:</span> <b id="d-setor">—</b> &nbsp;·&nbsp; <span class="muted">Matrícula:</span> <b id="d-matricula">—</b></div>
+        <div class="muted" style="font-size:13px;margin-top:6px;">Nome, grupo e região são o seu cadastro na campanha — é por eles que o pagamento e o ranking chegam.
+          <a href="#" id="dados-errados">Algo está errado?</a></div>
+        <div id="correcao-box" class="hidden" style="margin-top:10px;border-top:1px solid var(--line);padding-top:10px;">
+          <label for="correcao-txt">O que está errado?</label>
+          <input id="correcao-txt" maxlength="200" placeholder="ex: meu grupo agora é PDV NE 2" />
+          <button type="button" id="correcao-enviar" class="secondary" style="margin-top:8px;">Enviar para a equipe</button>
+          <div class="muted" id="correcao-msg" style="margin-top:6px;"></div>
+        </div>
+      </div>
+
+      <div style="margin-top:16px;">
+        <label for="tel">Telefone</label>
+        <div class="row" style="align-items:flex-end;">
+          <div style="flex:1;min-width:220px;"><input id="tel" inputmode="tel" placeholder="(51) 9 0000 0000" /></div>
+          <button type="button" id="tel-salvar">Salvar telefone</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- e-mail de acesso -->
+    <div class="card">
+      <h2>E-mail de acesso</h2>
+      <p class="muted" style="margin-top:0;">É o seu login e pra onde vai o link de redefinição de senha. Trocar pede a senha atual.</p>
+      <form id="form-email">
+        <div class="row">
+          <div style="flex:1;min-width:220px;"><label for="email">Novo e-mail</label><input id="email" type="email" autocomplete="email" required /></div>
+          <div style="flex:1;min-width:220px;"><label for="email-senha">Senha atual</label><input id="email-senha" type="password" autocomplete="current-password" required /></div>
+        </div>
+        <div class="err" id="email-err" role="alert"></div>
+        <button type="submit" style="margin-top:10px;">Trocar e-mail</button>
+      </form>
+    </div>
+
+    <!-- senha -->
+    <div class="card">
+      <h2>Senha</h2>
+      <p class="muted" style="margin-top:0;">A troca pede a senha atual e a nova duas vezes.</p>
+      <a class="btn-cta outline" href="/pdv/trocar-senha.html" style="margin-left:0;padding:10px 22px;font-size:13px;">🔑 Trocar senha</a>
+    </div>
+  </main>
+
+  <script src="/common.js"></script>
+  <script>
+    let me;
+    const el = (id) => document.getElementById(id);
+    const iniciais = (nome) => String(nome || '').trim().split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join('').toUpperCase() || '?';
+
+    function pintaAvatar() {
+      const img = el('avatar-img'), ini = el('avatar-ini');
+      if (me.avatarUrl) { img.src = me.avatarUrl; img.hidden = false; ini.hidden = true; }
+      else { img.hidden = true; img.removeAttribute('src'); ini.hidden = false; ini.textContent = iniciais(me.name); }
+      el('foto-remover').classList.toggle('hidden', !me.avatarUrl);
+    }
+
+    async function init() {
+      me = await api('/api/me');
+      if (me.mustChangePassword) { location.href = '/pdv/trocar-senha.html'; return; }
+      if (me.precisaAceitar) { location.href = '/pdv/aceitar-politica.html'; return; }
+      const admin = me.role === 'admin';
+      el('voltar').href = admin ? '/pdv/admin.html' : '/pdv/promotor.html';
+      el('p-nome').textContent = me.name;
+      el('p-email').textContent = me.email;
+      el('p-papel').textContent = admin ? '👑 Equipe Memphis' : '📷 Promotor';
+      pintaAvatar();
+
+      el('nome-admin').classList.toggle('hidden', !admin);
+      el('nome-promotor').classList.toggle('hidden', admin);
+      if (admin) el('nome').value = me.name;
+      else {
+        el('d-nome').textContent = me.name;
+        el('d-grupo').textContent = me.grupo || '—';
+        el('d-regiao').textContent = me.regiao || '—';
+        if (me.setor || me.matricula != null) {
+          el('d-extra').classList.remove('hidden');
+          el('d-setor').textContent = me.setor || '—';
+          el('d-matricula').textContent = me.matricula != null ? me.matricula : '—';
+        }
+      }
+      el('tel').value = fmtTel(me.telefone);
+      maskTel(el('tel'));
+      el('email').value = me.email;
+    }
+
+    // ---- foto: recorta em quadrado e reduz no navegador, sobe direto no Cloudinary ----
+    async function quadrada(file, tam = 320) {
+      const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' });
+      const lado = Math.min(bmp.width, bmp.height);
+      const c = document.createElement('canvas');
+      c.width = c.height = tam;
+      c.getContext('2d').drawImage(bmp, (bmp.width - lado) / 2, (bmp.height - lado) / 2, lado, lado, 0, 0, tam, tam);
+      return new Promise((res) => c.toBlob((b) => res(new File([b], 'avatar.jpg', { type: 'image/jpeg' })), 'image/jpeg', 0.86));
+    }
+    el('foto-trocar').onclick = () => el('foto-file').click();
+    el('foto-file').addEventListener('change', async () => {
+      const f = el('foto-file').files[0];
+      el('foto-file').value = '';
+      if (!f) return;
+      if (!f.type.startsWith('image/')) return toast('Escolha uma imagem', 'bad');
+      const btn = el('foto-trocar');
+      btn.disabled = true; btn.textContent = '⏳ Enviando…';
+      try {
+        const peq = await quadrada(f);
+        const up = await cloudinaryUpload(peq, 'avatars');
+        await api('/api/me', { method: 'PATCH', body: JSON.stringify({ avatar: { publicId: up.publicId } }) });
+        me = await api('/api/me');
+        pintaAvatar();
+        toast('Foto atualizada');
+      } catch (e) { toast(e.message, 'bad'); }
+      btn.disabled = false; btn.textContent = '📷 Trocar foto';
+    });
+    el('foto-remover').onclick = async () => {
+      if (!confirm('Tirar a foto de perfil?')) return;
+      try {
+        await api('/api/me', { method: 'PATCH', body: JSON.stringify({ avatar: null }) });
+        me.avatarUrl = null; pintaAvatar();
+        toast('Foto removida');
+      } catch (e) { toast(e.message, 'bad'); }
+    };
+
+    // ---- nome (admin) e telefone ----
+    el('nome-salvar').onclick = async () => {
+      const name = el('nome').value.trim();
+      if (name.length < 2) return toast('Nome muito curto', 'bad');
+      try {
+        await api('/api/me', { method: 'PATCH', body: JSON.stringify({ name }) });
+        me.name = name; el('p-nome').textContent = name; pintaAvatar();
+        toast('Nome salvo');
+      } catch (e) { toast(e.message, 'bad'); }
+    };
+    el('tel-salvar').onclick = async () => {
+      try {
+        await api('/api/me', { method: 'PATCH', body: JSON.stringify({ telefone: el('tel').value }) });
+        toast('Telefone salvo');
+      } catch (e) { toast(e.message, 'bad'); }
+    };
+
+    // ---- pedido de correção (promotor) — o mesmo caminho da tela de envio ----
+    el('dados-errados').addEventListener('click', (e) => {
+      e.preventDefault();
+      el('correcao-box').classList.toggle('hidden');
+      el('correcao-txt').focus();
+    });
+    el('correcao-enviar').addEventListener('click', async () => {
+      const txt = el('correcao-txt').value.trim();
+      const msg = el('correcao-msg');
+      if (txt.length < 5) { msg.textContent = 'Descreva o que está errado.'; return; }
+      try {
+        await api('/api/my/correcao-cadastro', { method: 'POST', body: JSON.stringify({ descricao: txt }) });
+        msg.innerHTML = '<span style="color:var(--green)">✓ Enviado. A equipe vai corrigir e te avisar.</span>';
+        el('correcao-txt').value = '';
+      } catch (e) { msg.textContent = e.message; }
+    });
+
+    // ---- e-mail (pede a senha atual) ----
+    el('form-email').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const err = el('email-err');
+      err.textContent = '';
+      const email = el('email').value.trim();
+      if (email.toLowerCase() === String(me.email).toLowerCase()) { err.textContent = 'É o mesmo e-mail de agora.'; return; }
+      try {
+        const r = await api('/api/me/email', { method: 'POST', body: JSON.stringify({ email, password: el('email-senha').value }) });
+        me.email = r.email; el('p-email').textContent = r.email; el('email-senha').value = '';
+        toast('E-mail trocado — use o novo no próximo login');
+      } catch (ex) { err.textContent = ex.message; }
+    });
+
+    init().catch((e) => toast(e.message, 'bad'));
+  </script>
+</body>
+</html>
