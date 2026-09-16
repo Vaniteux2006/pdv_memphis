@@ -14,7 +14,7 @@
 <body class="theme-dark">
   <header class="site-header">
     <a class="brand" href="/"><img src="/logo-memphis.webp" alt="Memphis" class="brand-logo" /></a>
-    <a class="btn-cta" href="/pdv/login.html" style="padding:10px 28px;font-size:13px;">Entrar</a>
+    <div id="hdr-auth"><a class="btn-cta" href="/pdv/login.html" style="padding:10px 28px;font-size:13px;">Entrar</a></div>
   </header>
 
   <main>
@@ -24,9 +24,11 @@
     <p>A campanha oficial da Memphis que valoriza o seu trabalho no ponto de venda.
        Envie as fotos da sua exposição direto do celular e acompanhe a avaliação de
        cada envio — tudo num canal só, seguro e organizado.</p>
-    <a class="btn-cta" href="/pdv/cadastro.html">Participar da campanha</a>
-    <a class="btn-cta outline" href="/pdv/login.html">Já tenho conta</a>
-    <a class="btn-cta outline" href="#como">Como funciona</a>
+    <div id="hero-cta">
+      <a class="btn-cta" href="/pdv/cadastro.html">Participar da campanha</a>
+      <a class="btn-cta outline" href="/pdv/login.html">Já tenho conta</a>
+      <a class="btn-cta outline" href="#como">Como funciona</a>
+    </div>
   </section>
 
   <section class="lp-section">
@@ -289,8 +291,48 @@
     <div style="margin-top:8px;opacity:.8;">© <span id="ano"></span> Memphis &middot; Todos os direitos reservados</div>
   </footer>
 
+  <script src="/common.js"></script>
   <script>
     document.getElementById('ano').textContent = new Date().getFullYear();
+
+    // Capa com sessão: quem já entrou não precisa ver "Entrar" nem "Já tenho conta".
+    // fetch direto (e não api()) porque 401 aqui é o caso normal — visitante — e o
+    // helper mandaria pro login. Falhou por qualquer motivo, fica a capa de visitante.
+    (async function () {
+      let me;
+      try {
+        const r = await fetch('/api/me');
+        if (!r.ok) return;
+        me = await r.json();
+      } catch { return; }
+
+      // portões vêm antes do painel: a mesma ordem que o login e as páginas internas usam
+      const painel = me.mustChangePassword ? '/pdv/trocar-senha.html'
+        : me.precisaAceitar ? '/pdv/aceitar-politica.html'
+        : me.role === 'admin' ? '/pdv/admin.html' : '/pdv/promotor.html';
+      const nome = String(me.name || '').trim();
+      const iniciais = nome.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join('').toUpperCase() || '?';
+      const primeiro = nome.split(/\s+/)[0] || me.email;
+
+      document.getElementById('hdr-auth').innerHTML =
+        `<a class="user-chip" href="${painel}" title="${esc(nome)}">` +
+          `<span class="avatar" aria-hidden="true">${esc(iniciais)}</span>` +
+          `<span class="nome">${esc(primeiro)}</span></a>` +
+        '<button type="button" class="user-sair" onclick="logout()">Sair</button>';
+
+      // CTAs por papel. Os portões (senha/aceite) levam tudo pro mesmo lugar, que é
+      // onde o painel também mandaria — só evita o pulo duplo.
+      const ctas = me.role === 'admin'
+        ? [['Avaliar fotos', painel], ['Definir ranking', painel === '/pdv/admin.html' ? '/pdv/admin.html#ranking' : painel]]
+        : [['Participar da campanha', painel], ['Fotos enviadas', painel === '/pdv/promotor.html' ? '/pdv/promotor.html#minhas' : painel]];
+      document.getElementById('hero-cta').innerHTML = ctas
+        .map(([t, h], i) => `<a class="btn-cta${i ? ' outline' : ''}" href="${h}">${esc(t)}</a>`).join('');
+      // os outros "Participar da campanha" da página também deixam de apontar pro cadastro
+      document.querySelectorAll('a[href="/pdv/cadastro.html"]').forEach((a) => {
+        a.href = painel;
+        if (me.role === 'admin') a.textContent = 'Ir para o painel';
+      });
+    })();
 
     // abas do guia da campanha
     (function () {

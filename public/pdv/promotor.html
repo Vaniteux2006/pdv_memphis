@@ -79,7 +79,9 @@
       </form>
     </div>
 
-    <div class="card">
+    <!-- id + scroll-margin: a capa aponta pra cá com #minhas ("Fotos enviadas"),
+         e o topbar é grudento — sem a margem o título ficaria escondido atrás dele -->
+    <div class="card" id="minhas" style="scroll-margin-top:90px;">
       <h2>Minhas fotos enviadas</h2>
       <div class="muted empty" id="myempty">📷 Nada enviado ainda — sua primeira foto aparece aqui.</div>
       <div class="grid" id="mygrid"></div>
@@ -125,7 +127,10 @@
         .then((c) => { if (c.contatoTelefone) document.getElementById('contato-tel').textContent = c.contatoTelefone; })
         .catch(() => {});
       renderThumbs(); // mostra a dica de quantas fotos dá pra mandar (limite vem do servidor)
-      loadMine();
+      await loadMine();
+      // "Fotos enviadas" na capa chega com #minhas. O navegador já rolou no load, mas o
+      // formulário só cresce depois do /api/reference e empurra o card pra baixo — rola de novo
+      if (location.hash === '#minhas') document.getElementById('minhas').scrollIntoView();
       setInterval(loadMine, 20000); // atualiza status/pré-avaliação a cada 20s
     }
     // O erro precisa FICAR na tela: o toast some em 2,6s e mensagens como "você já tem uma

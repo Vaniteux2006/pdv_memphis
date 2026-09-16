@@ -84,6 +84,28 @@ a:hover { text-decoration: underline; }
 .topbar-right { display: flex; align-items: center; gap: 12px; }
 .who { color: var(--muted); font-size: 13px; }
 
+/* capa com sessão: no lugar do "Entrar" fica quem está logado. O avatar são as iniciais
+   (não guardamos foto de perfil — e nem queremos: é dado pessoal a mais pra cuidar) */
+#hdr-auth { display: flex; align-items: center; gap: 10px; }
+.user-chip {
+  display: inline-flex; align-items: center; gap: 10px; padding: 5px 14px 5px 5px;
+  border-radius: 999px; background: var(--panel2); border: 1px solid var(--line);
+  color: var(--ink); font-weight: 600; font-size: 13px; max-width: 220px;
+  transition: border-color .15s, background .15s;
+}
+.user-chip:hover { text-decoration: none; border-color: var(--teal); background: var(--teal-soft); }
+.user-chip .avatar {
+  width: 32px; height: 32px; border-radius: 50%; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--teal-fill); color: #fff; font-size: 12px; font-weight: 700; letter-spacing: .5px;
+}
+.user-chip .nome { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-sair {
+  background: none; border: 0; color: var(--muted); font-size: 12px; padding: 6px 4px;
+  cursor: pointer; font-family: inherit;
+}
+.user-sair:hover { color: var(--ink); text-decoration: underline; }
+
 .brand { display: flex; align-items: center; gap: 11px; }
 .brand:hover { text-decoration: none; }
 .brand-logo { height: 46px; width: auto; display: block; }
