@@ -250,6 +250,7 @@ automática na mesma rotina diária da retenção.
 | `GET /api/admin/backup` | 🪪 `*` | Lista os backups e a retenção declarada. |
 | `GET /api/admin/backup/baixar?arquivo=` | 🪪 `*` | **302** → URL assinada. Sem caminho de volta, "ter backup" seria teatro. |
 | `POST /api/admin/reset-cadastros` | 🪪 `*` | Apaga a base de pessoas. Ver cerimônia abaixo. |
+| `POST /api/admin/submissions/excluir-tudo` | 🪪 `*` | Apaga todas as fotos. Mesma cerimônia (palavra `EXCLUIR`), sem o backup — foto se guarda pelo ZIP. |
 
 **Cerimônia do reset** (é a ação mais destrutiva do sistema — apaga o cadastro de ~1.400
 pessoas, e um clique errado aqui não tem desfazer):

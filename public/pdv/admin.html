@@ -76,6 +76,12 @@
         <div style="text-align:center;margin-top:14px;">
           <button class="secondary hidden" id="btn-mais">⬇ Carregar mais</button>
         </div>
+        <!-- fora do #fotos-acoes de propósito: aquela barra só aparece em Aprovadas, e apagar
+             tudo não é ação de uma sub-aba. Só acesso total. -->
+        <div class="hidden" id="fotos-perigo" style="margin-top:18px;padding-top:12px;border-top:1px dashed var(--line);display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+          <span class="muted" style="font-size:13px;flex:1;min-width:200px;">Fim de campanha ou sobra de teste: apaga todas as fotos do sistema — todas as sub-abas, vencedoras inclusive — e as imagens no armazenamento.</span>
+          <button class="danger" id="btn-excluir-tudo">🧨 Excluir TODAS as fotos</button>
+        </div>
       </div>
     </section>
 
@@ -156,6 +162,16 @@
           <select id="u-f-grupo" aria-label="Filtrar contas por grupo"><option value="">Todos grupos</option></select>
         </div>
         <div id="u-list"></div>
+      </div>
+
+      <!-- só acesso total. O servidor já tinha o reset (com backup obrigatório antes); faltava
+           um botão — excluir 1.400 contas uma a uma não é caminho. -->
+      <div class="card hidden" id="card-reset" style="border-left:3px solid var(--red);">
+        <h2>Zona de perigo</h2>
+        <p class="muted" style="margin-top:0;">Apaga <b>todas as contas de promotor</b> de uma vez — junto com o banco de nomes, os cadastros
+          aguardando aprovação e o histórico de recusas. Admins ficam. Um backup é gerado e guardado <b>antes</b>; se ele falhar, nada é apagado.
+          As fotos não são tocadas (pra isso, "Excluir TODAS as fotos" na aba Fotos).</p>
+        <button class="danger" id="btn-reset-contas">🧨 Excluir todas as contas de promotor</button>
       </div>
     </section>
 
@@ -395,6 +411,8 @@
       });
       // crachá: quem tem acesso total gera; quem não tem, valida
       document.getElementById('cracha-gerar').classList.toggle('hidden', !eu('*'));
+      document.getElementById('fotos-perigo').classList.toggle('hidden', !eu('*'));
+      document.getElementById('card-reset').classList.toggle('hidden', !eu('*'));
       document.getElementById('cracha-validar').classList.toggle('hidden', eu('*'));
 
       // abre a primeira aba permitida; admin sem NENHUMA permissão vê só o crachá pra validar
@@ -412,6 +430,15 @@
         document.getElementById('tab-promotores').classList.remove('hidden');
         document.querySelectorAll('#tab-promotores .card').forEach((c) => { if (c.id !== 'card-cracha') c.classList.add('hidden'); });
         toast('Sua conta ainda não tem permissões. Valide um crachá ou peça a um admin com acesso total.', 'bad');
+      }
+      // a capa manda pra cá com #ranking ("Definir ranking"): já nasce na sub-aba certa
+      if (location.hash === '#ranking' && eu('fotos')) {
+        fotoView = 'ranking';
+        document.querySelectorAll('#foto-subtabs button').forEach((x) => {
+          const on = x.dataset.view === 'ranking';
+          x.classList.toggle('active', on);
+          x.setAttribute('aria-selected', String(on));
+        });
       }
       if (eu('fotos')) loadPhotos();
       if (eu('aprovar')) loadPendentes();
@@ -953,9 +980,42 @@
       const r = await api('/api/admin/purge', { method: 'POST' });
       toast(`${r.removed} removida(s)`); loadPhotos();
     };
+    // confirmação por DIGITAÇÃO, como no reset de cadastros: um confirm() de uma tecla não
+    // é cerimônia pra apagar a campanha inteira
+    document.getElementById('btn-excluir-tudo').onclick = async () => {
+      const resp = prompt('⚠ Isso apaga TODAS as fotos do sistema — pendentes, aprovadas, recusadas, ' +
+        'baixadas ou não, vencedoras de ranking inclusive — e as imagens no armazenamento. Sem volta.\n' +
+        'Se quiser guardar alguma coisa, baixe o ZIP antes.\n\nDigite EXCLUIR para confirmar:');
+      if ((resp || '').trim().toUpperCase() !== 'EXCLUIR') return;
+      const btn = document.getElementById('btn-excluir-tudo');
+      btn.disabled = true; btn.textContent = '⏳ Apagando…';
+      try {
+        const r = await api('/api/admin/submissions/excluir-tudo', { method: 'POST', body: JSON.stringify({ confirmacao: resp }) });
+        toast(`${r.fotos} foto(s) e ${r.imagens} imagem(ns) apagadas` + (r.ranking ? ` · ${r.ranking} medalha(s) do quadro de honra` : ''));
+        galId = null; galIdx = 0; subsCache = [];
+        loadPhotos();
+      } catch (e) { toast(e.message, 'bad'); }
+      btn.disabled = false; btn.textContent = '🧨 Excluir TODAS as fotos';
+    };
 
     // ---- contas ----
     let usersCache = [], editingId = null, permEditingId = null, userFilter = '';
+    document.getElementById('btn-reset-contas').onclick = async () => {
+      const n = usersCache.filter((u) => u.role !== 'admin').length;
+      const resp = prompt(`⚠ Isso apaga TODAS as ${n} contas de promotor, o banco de nomes, os cadastros pendentes ` +
+        'e o histórico de recusas. Admins ficam. Um backup é gerado antes — se falhar, nada é apagado.\n\n' +
+        'Digite RESETAR para confirmar:');
+      if ((resp || '').trim().toUpperCase() !== 'RESETAR') return;
+      const btn = document.getElementById('btn-reset-contas');
+      btn.disabled = true; btn.textContent = '⏳ Fazendo backup e apagando…';
+      try {
+        const r = await api('/api/admin/reset-cadastros', { method: 'POST', body: JSON.stringify({ confirmacao: resp }) });
+        toast(`${r.contas} conta(s), ${r.promotores} nome(s) e ${r.pendentes} pendente(s) apagados · backup guardado`);
+        editingId = null; permEditingId = null;
+        loadUsers(); refreshContasBadge(); loadPendentes().catch(() => {});
+      } catch (e) { toast(e.message, 'bad'); }
+      btn.disabled = false; btn.textContent = '🧨 Excluir todas as contas de promotor';
+    };
     document.getElementById('u-search').addEventListener('input', (e) => {
       userFilter = e.target.value.toLowerCase(); editingId = null; permEditingId = null; renderUsers();
     });

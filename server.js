@@ -1241,6 +1241,21 @@ app.post('/api/admin/purge', requireAuth, requirePerm('fotos'), ah(async (req, r
   res.json({ removed: removed.length });
 }));
 
+// Apagar TODAS as fotos de uma vez (fim de campanha, ou limpar o que sobrou de um teste).
+// A mesma cerimônia do reset de cadastros: só acesso total, palavra digitada, auditoria.
+// Não passa por backup — foto não é cadastro: quem quer guardar baixa o ZIP antes.
+const PALAVRA_EXCLUIR_FOTOS = 'EXCLUIR';
+app.post('/api/admin/submissions/excluir-tudo', requireAuth, requirePerm('*'), ah(async (req, res) => {
+  if (String(req.body?.confirmacao || '').trim().toUpperCase() !== PALAVRA_EXCLUIR_FOTOS)
+    return res.status(400).json({ error: `Digite ${PALAVRA_EXCLUIR_FOTOS} para confirmar.` });
+  const r = await db.excluirTodasSubmissions();
+  const imagens = r.subs.flatMap((s) => imagensDe(s).map((img) => ({ publicId: img.storedFile, resourceType: img.resourceType || 'image' })));
+  const apagadas = await store.removeMany(imagens);
+  await auditar(req, { acao: db.ACOES.EXCLUIU_TODAS_FOTOS, qtd: r.subs.length,
+    detalhe: `${r.subs.length} foto(s), ${apagadas}/${imagens.length} imagem(ns) no storage, ${r.ranking} medalha(s)` });
+  res.json({ ok: true, fotos: r.subs.length, imagens: apagadas, imagensTotal: imagens.length, ranking: r.ranking });
+}));
+
 // ---------- fila de convites (LGPD 1.7.2) ----------
 // Envio em blocos com pausa: 1.400 e-mails de uma vez derrubam Gmail comum (App Password
 // estrangula e pode bloquear a conta por spam). Em produção isso deve sair por serviço

@@ -75,6 +75,7 @@ enviado automaticamente pelo navegador. Erros retornam `{ "error": "mensagem" }`
 | POST | `/api/admin/mark-downloaded` | 👑 `fotos` | `{ ids }` — o navegador chama **depois** de concluir o ZIP; marca `baixado=true`. |
 | GET | `/api/admin/export.xlsx` | 👑 `fotos` | **Excel gerado do zero no molde oficial** — uma aba por região, bloco-resumo com fórmulas (`COUNTIFS`), colunas do modelo (Seq, REF, COLAR EM PASTAS, Semanas…). Aceita os mesmos filtros de busca. |
 | POST | `/api/admin/purge` | 👑 `fotos` | Apaga **definitivamente** as já baixadas (Mongo + Cloudinary): `{ removed }`. |
+| POST | `/api/admin/submissions/excluir-tudo` | 🪪 `*` | `{ confirmacao: "EXCLUIR" }` — apaga **todas** as fotos (todas as sub-abas, vencedoras de ranking inclusive) + imagens no Cloudinary em lotes de 100 (`delete_resources`) + o quadro de honra. Sem backup (foto não é cadastro — quem quer guardar baixa o ZIP antes). Palavra errada → 400. Auditoria `excluiu_todas_fotos` com `N/M imagens no storage`. `{ fotos, imagens, imagensTotal, ranking }`. |
 
 ## Ranking e presença
 
