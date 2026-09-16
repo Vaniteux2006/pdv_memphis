@@ -40,20 +40,19 @@
     <!-- dados de cadastro -->
     <div class="card">
       <h2>Seus dados</h2>
-      <!-- admin edita o nome; promotor só lê (o nome é a identidade do pagamento e do ranking —
-           quem corrige é a equipe, pela fila de correções, como na tela de envio) -->
-      <div id="nome-admin" class="hidden">
-        <label for="nome">Nome</label>
-        <div class="row" style="align-items:flex-end;">
-          <div style="flex:1;min-width:220px;"><input id="nome" maxlength="120" /></div>
-          <button type="button" id="nome-salvar">Salvar nome</button>
-        </div>
+      <label for="nome">Nome</label>
+      <div class="row" style="align-items:flex-end;">
+        <div style="flex:1;min-width:220px;"><input id="nome" maxlength="120" /></div>
+        <button type="button" id="nome-salvar">Salvar nome</button>
       </div>
-      <div id="nome-promotor" class="hidden" style="line-height:1.8;font-size:14px;">
-        <div><span class="muted">Nome:</span> <b id="d-nome">—</b></div>
+      <div class="muted" style="font-size:12px;margin-top:4px;">É o nome que aparece nas suas fotos e no ranking. Fotos já enviadas ficam com o nome da época.</div>
+
+      <!-- grupo e região o promotor só lê: são o recorte da campanha, quem corrige é a
+           equipe pela fila de correções (o mesmo caminho da tela de envio) -->
+      <div id="dados-promotor" class="hidden" style="line-height:1.8;font-size:14px;margin-top:14px;">
         <div><span class="muted">Grupo:</span> <b id="d-grupo">—</b> &nbsp;·&nbsp; <span class="muted">Região:</span> <b id="d-regiao">—</b></div>
         <div id="d-extra" class="hidden"><span class="muted">Setor:</span> <b id="d-setor">—</b> &nbsp;·&nbsp; <span class="muted">Matrícula:</span> <b id="d-matricula">—</b></div>
-        <div class="muted" style="font-size:13px;margin-top:6px;">Nome, grupo e região são o seu cadastro na campanha — é por eles que o pagamento e o ranking chegam.
+        <div class="muted" style="font-size:13px;margin-top:6px;">Grupo e região vêm do cadastro da campanha — quem ajusta é a equipe.
           <a href="#" id="dados-errados">Algo está errado?</a></div>
         <div id="correcao-box" class="hidden" style="margin-top:10px;border-top:1px solid var(--line);padding-top:10px;">
           <label for="correcao-txt">O que está errado?</label>
@@ -118,11 +117,9 @@
       el('p-papel').textContent = admin ? '👑 Equipe Memphis' : '📷 Promotor';
       pintaAvatar();
 
-      el('nome-admin').classList.toggle('hidden', !admin);
-      el('nome-promotor').classList.toggle('hidden', admin);
-      if (admin) el('nome').value = me.name;
-      else {
-        el('d-nome').textContent = me.name;
+      el('nome').value = me.name;
+      el('dados-promotor').classList.toggle('hidden', admin);
+      if (!admin) {
         el('d-grupo').textContent = me.grupo || '—';
         el('d-regiao').textContent = me.regiao || '—';
         if (me.setor || me.matricula != null) {
@@ -172,7 +169,7 @@
       } catch (e) { toast(e.message, 'bad'); }
     };
 
-    // ---- nome (admin) e telefone ----
+    // ---- nome e telefone ----
     el('nome-salvar').onclick = async () => {
       const name = el('nome').value.trim();
       if (name.length < 2) return toast('Nome muito curto', 'bad');

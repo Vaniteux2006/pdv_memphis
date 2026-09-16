@@ -262,9 +262,9 @@ app.post('/api/change-password', requireAuth, ah(async (req, res) => {
 }));
 
 // ---------- a própria conta (/user/) ----------
-// O que cada um edita sozinho: telefone e foto, todo mundo; nome, só admin — pro promotor
-// o nome é a identidade do pagamento e do ranking, e reabrir esse campo desfaria o que o
-// Bloco 2 fechou (ele pede correção pela fila, como na tela de envio). E-mail tem rota
+// O que cada um edita sozinho: nome, telefone e foto. Grupo e região não — são o recorte
+// da campanha, e continuam indo pela fila de correção. Fotos já enviadas guardam o nome
+// da época do envio (o mesmo que acontece quando o admin edita a conta). E-mail tem rota
 // própria porque é a identidade de login: exige a senha atual.
 const RE_AVATAR_ID = new RegExp('^' + PASTAS.avatars + '/[A-Za-z0-9_-]{1,80}$');
 app.patch('/api/me', requireAuth, ah(async (req, res) => {
@@ -273,8 +273,6 @@ app.patch('/api/me', requireAuth, ah(async (req, res) => {
       telefone: v.texto({ max: 30 }),
       name: v.texto({ obrigatorio: true, min: 2, max: 120, rotulo: 'o nome' }),
     });
-    if (campos.name !== undefined && req.user.role !== 'admin')
-      return res.status(400).json({ error: 'Promotor não troca o próprio nome por aqui — peça a correção à equipe.' });
     // foto: `{ publicId }` que o navegador acabou de subir na pasta de avatares, ou null pra tirar
     if ('avatar' in req.body) {
       const a = req.body.avatar;
